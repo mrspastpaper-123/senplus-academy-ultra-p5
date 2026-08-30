@@ -60,6 +60,7 @@ export default function Home() {
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsMessage, setUnitsMessage] = useState("");
   const [activeUnit, setActiveUnit] = useState<MathsUnit | null>(null);
+  const [activeSubject, setActiveSubject] = useState<"maths" | "chinese">("maths");
   const [attemptId, setAttemptId] = useState<number | null>(null);
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -366,8 +367,9 @@ export default function Home() {
     setChineseUnitsLoading(false);
   }
 
-  async function startUnit(unit: MathsUnit) {
-    if (!enabledMathsUnits.has(unit.code)) return;
+  async function startUnit(unit: MathsUnit, subject: "maths" | "chinese" = activeSubject) {
+    if (subject === "maths" && !enabledMathsUnits.has(unit.code)) return;
+    setActiveSubject(subject);
     setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage(""); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(""); setFeedback(null); setCompletedResult(null);
     const { data: startResult, error: startError } = await supabase.rpc("start_practice", { p_node_id: unit.id, p_question_count: 10 });
     if (startError || !startResult?.success) {
@@ -705,8 +707,8 @@ export default function Home() {
             <div><Brain size={21} /><span>完成題數</span><strong>{completedResult.answered_count}／{completedResult.total_questions}</strong></div>
           </div>
           <div className="completion-actions">
-            <button className="retry-button" onClick={() => startUnit(activeUnit)}><RotateCcw size={18} />重新練習</button>
-            <button className="units-button" onClick={() => setView("maths")}><ArrowLeft size={18} />返回學習單位</button>
+            <button className="retry-button" onClick={() => startUnit(activeUnit, activeSubject)}><RotateCcw size={18} />重新練習</button>
+            <button className="units-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回學習單位</button>
           </div>
           <p className="saved-note">本次成績及錯題已儲存到學習紀錄。</p>
         </div>
@@ -717,8 +719,8 @@ export default function Home() {
   if (view === "practice") return <main className="dashboard-page">
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap practice-wrap">
-      <button className="back-button" onClick={() => setView("maths")}><ArrowLeft size={18} />返回數學單位</button>
-      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 數學 · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
+      <button className="back-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回{activeSubject === "chinese" ? "中文" : "數學"}單位</button>
+      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : "數學"} · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{currentQuestion.question_text}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div>
@@ -735,7 +737,7 @@ export default function Home() {
       <div className="units-heading"><div className="subject-icon purple"><Brain size={25} /></div><div><p className="eyebrow">P5 數學</p><h1>選擇學習單位</h1><p>按自己的步伐逐步練習，完成後會即時批改。</p></div></div>
       {unitsLoading && <div className="unit-status">正在載入12個數學單位…</div>}
       {unitsMessage && <div className="unit-status error-message">{unitsMessage}</div>}
-      {!unitsLoading && !unitsMessage && <div className="unit-grid">{mathsUnits.map((unit) => <button className={`unit-card ${enabledMathsUnits.has(unit.code) ? "enabled" : "disabled"}`} key={unit.id} type="button" disabled={!enabledMathsUnits.has(unit.code)} onClick={() => startUnit(unit)}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "數學"}</span><span>{enabledMathsUnits.has(unit.code) ? "開始練習" : `難度 ${unit.difficulty}/5`}</span></div></button>)}</div>}
+      {!unitsLoading && !unitsMessage && <div className="unit-grid">{mathsUnits.map((unit) => <button className={`unit-card ${enabledMathsUnits.has(unit.code) ? "enabled" : "disabled"}`} key={unit.id} type="button" disabled={!enabledMathsUnits.has(unit.code)} onClick={() => startUnit(unit, "maths")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "數學"}</span><span>{enabledMathsUnits.has(unit.code) ? "開始練習" : `難度 ${unit.difficulty}/5`}</span></div></button>)}</div>}
       {!unitsLoading && !unitsMessage && mathsUnits.length === 0 && <div className="unit-status">目前尚未建立數學單位。</div>}
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
@@ -745,10 +747,10 @@ export default function Home() {
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap units-wrap chinese-units">
       <button className="back-button" onClick={() => setView("subjects")}><ArrowLeft size={18} />返回科目</button>
-      <div className="units-heading"><div className="subject-icon coral"><BookOpen size={25} /></div><div><p className="eyebrow">P5 中文</p><h1>選擇學習單位</h1><p>中文科課程已建立，題目會按範疇分批加入。</p></div></div>
+      <div className="units-heading"><div className="subject-icon coral"><BookOpen size={25} /></div><div><p className="eyebrow">P5 中文</p><h1>選擇學習單位</h1><p>選擇單位完成10題練習，系統會即時批改並記錄錯題。</p></div></div>
       {chineseUnitsLoading && <div className="unit-status">正在載入20個中文單位…</div>}
       {chineseUnitsMessage && <div className="unit-status error-message">{chineseUnitsMessage}</div>}
-      {!chineseUnitsLoading && !chineseUnitsMessage && <div className="unit-grid">{chineseUnits.map((unit) => <article className="unit-card chinese-unit-card disabled" key={unit.id}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "中文"}</span><span className="preparing-label">題目準備中</span></div></article>)}</div>}
+      {!chineseUnitsLoading && !chineseUnitsMessage && <div className="unit-grid">{chineseUnits.map((unit) => <button className="unit-card chinese-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "chinese")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "中文"}</span><span>開始練習</span></div></button>)}</div>}
       {!chineseUnitsLoading && !chineseUnitsMessage && chineseUnits.length === 0 && <div className="unit-status">目前尚未建立中文單位。</div>}
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
