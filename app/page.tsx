@@ -65,6 +65,8 @@ export default function Home() {
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [readingAnswers, setReadingAnswers] = useState<Record<number, string>>({});
+  const [readingSubmitted, setReadingSubmitted] = useState<number[]>([]);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
   const [completedResult, setCompletedResult] = useState<AnswerFeedback | null>(null);
   const [practiceLoading, setPracticeLoading] = useState(false);
@@ -108,6 +110,7 @@ export default function Home() {
   const [feedbackReports, setFeedbackReports] = useState<FeedbackReport[]>([]);
   const [feedbackListLoading, setFeedbackListLoading] = useState(false);
   const currentQuestion = questions[currentIndex] || null;
+  const isReadingUnit = activeUnit?.code.startsWith("5CR") || false;
   const displayedOptions = useMemo(() => {
     if (!currentQuestion || !attemptId) return [];
     const items = [...currentQuestion.options];
@@ -116,6 +119,33 @@ export default function Home() {
     for (let index = items.length - 1; index > 0; index--) { const swapWith = Math.floor(random() * (index + 1)); [items[index], items[swapWith]] = [items[swapWith], items[index]]; }
     return items.map((option, index) => ({ ...option, label: String.fromCharCode(65 + index) }));
   }, [attemptId, currentQuestion]);
+
+  function optionsForQuestion(question: PracticeQuestion) {
+    if (!attemptId) return [];
+    const items = [...question.options];
+    let seed = (attemptId * 2654435761 + question.id * 1013904223) >>> 0;
+    const random = () => { seed += 0x6D2B79F5; let value = seed; value = Math.imul(value ^ value >>> 15, value | 1); value ^= value + Math.imul(value ^ value >>> 7, value | 61); return ((value ^ value >>> 14) >>> 0) / 4294967296; };
+    for (let index = items.length - 1; index > 0; index--) { const swapWith = Math.floor(random() * (index + 1)); [items[index], items[swapWith]] = [items[swapWith], items[index]]; }
+    return items.map((option, index) => ({ ...option, label: String.fromCharCode(65 + index) }));
+  }
+
+  function splitReadingQuestion(questionText: string) {
+    const marker = "\n\n問題：";
+    const markerIndex = questionText.indexOf(marker);
+    if (markerIndex < 0) return { passage: "閱讀理解", prompt: questionText };
+    return { passage: questionText.slice(0, markerIndex).trim(), prompt: questionText.slice(markerIndex + marker.length).trim() };
+  }
+
+  const readingGroups = useMemo(() => {
+    const groups = new Map<string, { passage: string; questions: { question: PracticeQuestion; prompt: string }[] }>();
+    for (const question of questions) {
+      const { passage, prompt } = splitReadingQuestion(question.question_text);
+      const existing = groups.get(passage) || { passage, questions: [] };
+      existing.questions.push({ question, prompt });
+      groups.set(passage, existing);
+    }
+    return [...groups.values()];
+  }, [questions]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
@@ -370,7 +400,7 @@ export default function Home() {
   async function startUnit(unit: MathsUnit, subject: "maths" | "chinese" = activeSubject) {
     if (subject === "maths" && !enabledMathsUnits.has(unit.code)) return;
     setActiveSubject(subject);
-    setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage(""); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(""); setFeedback(null); setCompletedResult(null);
+    setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage(""); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(""); setReadingAnswers({}); setReadingSubmitted([]); setFeedback(null); setCompletedResult(null);
     const { data: startResult, error: startError } = await supabase.rpc("start_practice", { p_node_id: unit.id, p_question_count: 10 });
     if (startError || !startResult?.success) {
       const reason = startResult?.reason;
@@ -403,6 +433,32 @@ export default function Home() {
       } else {
         setFeedback(result);
       }
+    }
+    setPracticeLoading(false);
+  }
+
+  async function submitReadingAnswers() {
+    if (!attemptId || readingSubmitted.length === questions.length || questions.some((question) => !readingAnswers[question.id])) return;
+    setPracticeLoading(true); setPracticeMessage("");
+    const submitted = new Set(readingSubmitted);
+    let finalResult: AnswerFeedback | null = null;
+    for (const question of questions) {
+      if (submitted.has(question.id)) continue;
+      const { data, error } = await supabase.rpc("submit_practice_answer", { p_attempt_id: attemptId, p_question_id: question.id, p_answer: readingAnswers[question.id] });
+      if (error || !data?.success) {
+        setReadingSubmitted([...submitted]);
+        setPracticeMessage("部分答案未能提交，請按一次「提交全部答案」繼續。");
+        setPracticeLoading(false);
+        return;
+      }
+      submitted.add(question.id);
+      finalResult = data as AnswerFeedback;
+      setReadingSubmitted([...submitted]);
+    }
+    if (finalResult?.completed) {
+      setCompletedResult(finalResult);
+      setView("complete");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
     setPracticeLoading(false);
   }
@@ -723,7 +779,8 @@ export default function Home() {
       <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : "數學"} · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
-      {currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{currentQuestion.question_text}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div>
+      {isReadingUnit && questions.length > 0 && <section className="reading-paper"><div className="reading-paper-intro"><div><span className="unit-code">閱讀練習</span><h2>細閱文章，然後回答所有問題</h2></div><strong>{Object.keys(readingAnswers).length}／{questions.length} 已作答</strong></div>{readingGroups.map((group, groupIndex) => <article className="reading-group" key={group.passage}><div className="reading-passage"><span>文章 {groupIndex + 1}</span><div>{group.passage}</div></div><div className="reading-question-list">{group.questions.map(({ question, prompt }, questionIndex) => { const options = optionsForQuestion(question); const questionNumber = questions.findIndex((item) => item.id === question.id) + 1; return <section className="reading-question" key={question.id}><div className="question-meta"><span>第 {questionNumber || questionIndex + 1} 題</span><span>四選一</span></div><h3>{prompt}</h3><div className="option-list">{options.map((option) => <label className={`option ${readingAnswers[question.id] === option.id ? "selected" : ""}`} key={option.id}><input type="radio" name={`answer-${question.id}`} value={option.id} checked={readingAnswers[question.id] === option.id} disabled={readingSubmitted.includes(question.id) || practiceLoading} onChange={() => setReadingAnswers((answers) => ({ ...answers, [question.id]: option.id }))} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div></section>; })}</div></article>)}<div className="reading-submit-bar"><span>{questions.every((question) => readingAnswers[question.id]) ? "已完成所有題目，可以提交。" : `尚有 ${questions.filter((question) => !readingAnswers[question.id]).length} 題未作答`}</span><button className="submit-answer" disabled={questions.some((question) => !readingAnswers[question.id]) || practiceLoading} onClick={submitReadingAnswers}>{practiceLoading ? "正在批改…" : "提交全部答案"}</button></div></section>}
+      {!isReadingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{currentQuestion.question_text}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div>
         {!feedback && <button className="submit-answer" disabled={!selectedAnswer || practiceLoading} onClick={submitAnswer}>{practiceLoading ? "批改中…" : "提交答案"}</button>}
         {feedback && <div className={`feedback ${feedback.is_correct ? "correct" : "incorrect"}`}><h3>{feedback.is_correct ? "答對了！" : "答案不正確"}</h3><p>正確答案：{displayedOptions.find((option) => option.id === feedback.correct_answer)?.label} · {displayedOptions.find((option) => option.id === feedback.correct_answer)?.text}</p>{feedback.explanation && <p>{feedback.explanation}</p>}{feedback.completed ? <div className="final-score"><span>完成10題</span><strong>{feedback.correct_count}／{feedback.total_questions} 題答對</strong><b>{feedback.score ?? 0} 分</b></div> : <button className="next-question" onClick={nextQuestion}>下一題</button>}</div>}
       </section>}
