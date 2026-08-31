@@ -166,6 +166,6 @@ grant execute on function public.start_writing_task(bigint) to authenticated;
 grant execute on function public.submit_writing_task(bigint,text) to authenticated;
 commit;
 
-select n.code,n.title_zh,count(q.id) filter(where q.status='published') as skill_questions,count(distinct wp.id) as writing_prompts
+select n.code,n.title_zh,count(distinct q.id) filter(where q.status='published') as skill_questions,count(distinct wp.id) as writing_prompts
 from public.curriculum_nodes n left join public.questions q on q.node_id=n.id left join public.writing_prompts wp on wp.node_id=n.id
 where n.code in('5CW1','5CW2','5CW3','5CW4') group by n.code,n.title_zh order by n.code;
