@@ -626,6 +626,18 @@ export default function Home() {
       const option = question?.options?.find((item) => item.id === id);
       return cleanMarkedText(option ? `${id} · ${option.text}` : id);
     };
+    const displayQuestionText = (question: WrongQuestion | undefined) => {
+      const text = question?.question_text || "題目內容暫時未能顯示";
+      const code = nodeMap.get(question?.node_id || 0)?.code || "";
+      return code.startsWith("5CR") ? splitReadingQuestion(text).prompt : text;
+    };
+    const readingSources = Array.from(grouped.reduce((map, row) => {
+      const node = nodeMap.get(row.question?.node_id || 0);
+      if (!node?.code.startsWith("5CR") || !row.question?.question_text) return map;
+      const { passage } = splitReadingQuestion(row.question.question_text);
+      if (passage !== "閱讀理解") map.set(`${node.code}:${passage}`, { code: node.code, title: node.title_zh, passage });
+      return map;
+    }, new Map<string, { code: string; title: string; passage: string }>()).values());
     const maxUnitErrors = Math.max(1, ...unitRows.map((row) => row.total));
     return <main className="dashboard-page">
       <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>學生錯題分析</span></div></div><div className="account"><span>{profile.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
@@ -642,7 +654,8 @@ export default function Home() {
           </div>
           {wrongResponses.length ? <>
             <section className="admin-panel error-unit-panel"><div className="panel-title"><div><p className="eyebrow">薄弱範疇</p><h2>錯題單位分布</h2></div><span>{unitRows.length}個單位</span></div><div className="error-unit-list">{unitRows.map((row) => <article key={row.node?.id || row.node?.code}><div><strong>{row.node?.code || "—"} {row.node?.title_zh || "未知單位"}</strong><span>{row.total}次錯誤 · {row.questions}條題目</span></div><div className="performance-track error-track"><span style={{ width: `${Math.max(8, row.total / maxUnitErrors * 100)}%` }} /></div></article>)}</div></section>
-            <section className="admin-panel wrong-question-panel"><div className="panel-title"><div><p className="eyebrow">錯題清單</p><h2>優先重溫題目</h2></div><span>按錯誤次數排序</span></div><div className="wrong-question-list">{grouped.map((row, index) => <article key={row.questionId} className="wrong-question-card"><div className="wrong-question-head"><div><span className="unit-code">{nodeMap.get(row.question?.node_id || 0)?.code || "—"}</span><b>第 {index + 1} 項重點</b></div><strong>答錯 {row.count} 次</strong></div><h3>{renderMarkedText(row.question?.question_text || "題目內容暫時未能顯示")}</h3><div className="answer-comparison"><div className="student-wrong-answer"><span>最近錯誤答案</span><strong>{optionText(row.question, row.latest.selected_answer)}</strong></div><div className="correct-answer"><span>正確答案</span><strong>{optionText(row.question, row.key?.correct_answer)}</strong></div></div>{row.key?.explanation && <div className="explanation-box"><Lightbulb size={18} /><div><strong>解題說明</strong><p>{renderMarkedText(row.key.explanation)}</p></div></div>}</article>)}</div></section>
+            {readingSources.length > 0 && <section className="admin-panel reading-source-panel"><div className="panel-title"><div><p className="eyebrow">閱讀原文</p><h2>錯題相關文章</h2></div><span>{readingSources.length}篇</span></div><div className="reading-source-list">{readingSources.map((source) => <details key={source.code + source.passage}><summary><span className="unit-code">{source.code}</span><strong>{source.title}</strong><b>查看閱讀原文</b></summary><div>{renderMarkedText(source.passage)}</div></details>)}</div></section>}
+            <section className="admin-panel wrong-question-panel"><div className="panel-title"><div><p className="eyebrow">錯題清單</p><h2>優先重溫題目</h2></div><span>按錯誤次數排序</span></div><div className="wrong-question-list">{grouped.map((row, index) => <article key={row.questionId} className="wrong-question-card"><div className="wrong-question-head"><div><span className="unit-code">{nodeMap.get(row.question?.node_id || 0)?.code || "—"}</span><b>第 {index + 1} 項重點</b></div><strong>答錯 {row.count} 次</strong></div><h3>{renderMarkedText(displayQuestionText(row.question))}</h3><div className="answer-comparison"><div className="student-wrong-answer"><span>最近錯誤答案</span><strong>{optionText(row.question, row.latest.selected_answer)}</strong></div><div className="correct-answer"><span>正確答案</span><strong>{optionText(row.question, row.key?.correct_answer)}</strong></div></div>{row.key?.explanation && <div className="explanation-box"><Lightbulb size={18} /><div><strong>解題說明</strong><p>{renderMarkedText(row.key.explanation)}</p></div></div>}</article>)}</div></section>
           </> : <section className="admin-panel error-empty"><CheckCircle2 size={42} /><h2>目前沒有錯題紀錄</h2><p>這位學生完成練習並答錯題目後，系統會自動在此整理分析。</p></section>}
         </>}
       </section>
