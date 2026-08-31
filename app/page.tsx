@@ -17,6 +17,8 @@ const enabledMathsUnits = new Set(["5N1", "5N2", "5N3", "5N4", "5N5", "5A1", "5A
 type Profile = { display_name: string | null; role: string; grade: string; login_allowed: boolean };
 type MathsUnit = { id: number; domain_id: number; code: string; title_zh: string; title_en: string | null; difficulty: number; curriculum_domains: { title_zh: string; code: string } | null };
 type PracticeQuestion = { id: number; question_text: string; options: { id: string; text: string }[] };
+type WritingPrompt = { prompt_id: number; genre: string; title: string; instruction: string; min_chars: number; max_chars: number; guidance: string[] };
+type WritingResult = { success: boolean; submission_id: number; score: number; char_count: number; rubric: Record<string, number>; feedback: string };
 type AnswerFeedback = { is_correct: boolean; correct_answer: string; explanation: string | null; completed: boolean; score: number | null; answered_count: number; correct_count: number; total_questions: number };
 type AdminAttempt = { id: number; student_id: string; node_id: number; status: string; total_questions: number; answered_count: number; correct_count: number; score: number | null; started_at: string; completed_at: string | null };
 type AdminUser = { id: string; display_name: string | null; grade: string | null; role: string };
@@ -79,6 +81,9 @@ export default function Home() {
   const [selectedAnswer, setSelectedAnswer] = useState("");
   const [readingAnswers, setReadingAnswers] = useState<Record<number, string>>({});
   const [readingSubmitted, setReadingSubmitted] = useState<number[]>([]);
+  const [writingPrompt, setWritingPrompt] = useState<WritingPrompt | null>(null);
+  const [writingContent, setWritingContent] = useState("");
+  const [writingResult, setWritingResult] = useState<WritingResult | null>(null);
   const [feedback, setFeedback] = useState<AnswerFeedback | null>(null);
   const [completedResult, setCompletedResult] = useState<AnswerFeedback | null>(null);
   const [practiceLoading, setPracticeLoading] = useState(false);
@@ -123,6 +128,8 @@ export default function Home() {
   const [feedbackListLoading, setFeedbackListLoading] = useState(false);
   const currentQuestion = questions[currentIndex] || null;
   const isReadingUnit = activeUnit?.code.startsWith("5CR") || false;
+  const isWritingUnit = activeUnit?.code.startsWith("5CW") || false;
+  const writingCharCount = writingContent.replace(/\\s/g, "").length;
   const displayedOptions = useMemo(() => {
     if (!currentQuestion || !attemptId) return [];
     const items = [...currentQuestion.options];
@@ -413,8 +420,35 @@ export default function Home() {
     setChineseUnitsLoading(false);
   }
 
+  async function startWritingTask(unit: MathsUnit) {
+    setActiveSubject("chinese");
+    setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage("");
+    setQuestions([]); setWritingPrompt(null); setWritingContent(""); setWritingResult(null);
+    const { data, error } = await supabase.rpc("start_writing_task", { p_node_id: unit.id });
+    if (error || !data?.success) {
+      setPracticeMessage(data?.reason === "no_prompt" ? "這個單元目前未有作文題目。" : "未能載入作文題目，請先執行作文工作室 SQL。");
+    } else {
+      setWritingPrompt(data as WritingPrompt);
+    }
+    setPracticeLoading(false);
+  }
+
+  async function submitWritingTask() {
+    if (!writingPrompt || writingCharCount < 50 || writingResult) return;
+    setPracticeLoading(true); setPracticeMessage("");
+    const { data, error } = await supabase.rpc("submit_writing_task", { p_prompt_id: writingPrompt.prompt_id, p_content: writingContent });
+    if (error || !data?.success) {
+      setPracticeMessage(data?.reason === "too_short" ? "文章最少要有50字才可提交。" : "未能儲存及評改作文，請稍後再試。");
+    } else {
+      setWritingResult(data as WritingResult);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+    setPracticeLoading(false);
+  }
+
   async function startUnit(unit: MathsUnit, subject: "maths" | "chinese" = activeSubject) {
     if (subject === "maths" && !enabledMathsUnits.has(unit.code)) return;
+    if (subject === "chinese" && unit.code.startsWith("5CW")) { await startWritingTask(unit); return; }
     setActiveSubject(subject);
     setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage(""); setQuestions([]); setCurrentIndex(0); setSelectedAnswer(""); setReadingAnswers({}); setReadingSubmitted([]); setFeedback(null); setCompletedResult(null);
     const { data: startResult, error: startError } = await supabase.rpc("start_practice", { p_node_id: unit.id, p_question_count: 10 });
@@ -809,7 +843,12 @@ export default function Home() {
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {isReadingUnit && questions.length > 0 && <section className="reading-paper"><div className="reading-paper-intro"><div><span className="unit-code">閱讀練習</span><h2>左方閱讀全文，右方完成所有題目</h2></div><strong>{Object.keys(readingAnswers).length}／{questions.length} 已作答</strong></div><div className="reading-split-layout"><div className="reading-passages-column">{readingGroups.map((group, groupIndex) => <article className="reading-passage" key={group.passage}><span>文章 {groupIndex + 1}</span><div>{renderMarkedText(group.passage)}</div></article>)}</div><div className="reading-questions-column">{readingGroups.map((group, groupIndex) => <section className="reading-question-group" key={group.passage}><div className="reading-question-group-title"><span>文章 {groupIndex + 1} 題目</span><strong>{group.questions.length} 題</strong></div><div className="reading-question-list">{group.questions.map(({ question, prompt }, questionIndex) => { const options = optionsForQuestion(question); const questionNumber = questions.findIndex((item) => item.id === question.id) + 1; return <section className="reading-question" key={question.id}><div className="question-meta"><span>第 {questionNumber || questionIndex + 1} 題</span><span>四選一</span></div><h3>{renderMarkedText(prompt)}</h3><div className="option-list">{options.map((option) => <label className={`option ${readingAnswers[question.id] === option.id ? "selected" : ""}`} key={option.id}><input type="radio" name={`answer-${question.id}`} value={option.id} checked={readingAnswers[question.id] === option.id} disabled={readingSubmitted.includes(question.id) || practiceLoading} onChange={() => setReadingAnswers((answers) => ({ ...answers, [question.id]: option.id }))} /><strong>{option.label}</strong><span>{renderMarkedText(option.text)}</span></label>)}</div></section>; })}</div></section>)}</div></div><div className="reading-submit-bar"><span>{questions.every((question) => readingAnswers[question.id]) ? "已完成所有題目，可以提交。" : `尚有 ${questions.filter((question) => !readingAnswers[question.id]).length} 題未作答`}</span><button className="submit-answer" disabled={questions.some((question) => !readingAnswers[question.id]) || practiceLoading} onClick={submitReadingAnswers}>{practiceLoading ? "正在批改…" : "提交全部答案"}</button></div></section>}
-      {!isReadingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{currentQuestion.question_text}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div>
+      {isWritingUnit && writingPrompt && <section className="writing-workshop">
+        <div className="writing-workshop-head"><div><span className="unit-code">作文工作室 · {writingPrompt.genre}</span><h2>{writingPrompt.title}</h2><p>{writingPrompt.instruction}</p></div><div className={`writing-count ${writingCharCount >= writingPrompt.min_chars && writingCharCount <= writingPrompt.max_chars ? "in-range" : ""}`}><strong>{writingCharCount}</strong><span>建議 {writingPrompt.min_chars}–{writingPrompt.max_chars} 字</span></div></div>
+        <div className="writing-guidance"><strong>寫作提示</strong><div>{writingPrompt.guidance.map((item) => <span key={item}>{item}</span>)}</div></div>
+        {!writingResult ? <><textarea className="writing-editor" value={writingContent} onChange={(event) => setWritingContent(event.target.value)} placeholder="在這裏輸入作文……&#10;&#10;建議按內容分段，完成後再檢查錯別字和標點。" rows={18} disabled={practiceLoading} /><div className="writing-actions"><span>{writingCharCount < 50 ? `最少還需 ${50 - writingCharCount} 字才可提交` : "可以提交；系統會儲存全文並按四項準則評改。"}</span><button className="submit-answer" disabled={writingCharCount < 50 || practiceLoading} onClick={submitWritingTask}>{practiceLoading ? "正在儲存及評改…" : "提交作文"}</button></div></> : <div className="writing-result"><div className="writing-score"><span>自動評改</span><strong>{writingResult.score}<small>／100</small></strong><p>{writingResult.char_count} 字 · 作文已儲存</p></div><div className="writing-rubric">{Object.entries(writingResult.rubric).map(([name, score]) => <div key={name}><span>{name}</span><strong>{score}</strong></div>)}</div><div className="writing-feedback"><Lightbulb size={20} /><div><strong>改善建議</strong><p>{writingResult.feedback}</p><small>這是按篇幅、段落、標點和題目重點作出的初步評估；老師評語及分數會以人工評閱為準。</small></div></div><button className="retry-button" onClick={() => startWritingTask(activeUnit!)}><RotateCcw size={18} />抽選另一題</button></div>}
+      </section>}
+      {!isReadingUnit && !isWritingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{currentQuestion.question_text}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{option.text}</span></label>)}</div>
         {!feedback && <button className="submit-answer" disabled={!selectedAnswer || practiceLoading} onClick={submitAnswer}>{practiceLoading ? "批改中…" : "提交答案"}</button>}
         {feedback && <div className={`feedback ${feedback.is_correct ? "correct" : "incorrect"}`}><h3>{feedback.is_correct ? "答對了！" : "答案不正確"}</h3><p>正確答案：{displayedOptions.find((option) => option.id === feedback.correct_answer)?.label} · {displayedOptions.find((option) => option.id === feedback.correct_answer)?.text}</p>{feedback.explanation && <p>{feedback.explanation}</p>}{feedback.completed ? <div className="final-score"><span>完成10題</span><strong>{feedback.correct_count}／{feedback.total_questions} 題答對</strong><b>{feedback.score ?? 0} 分</b></div> : <button className="next-question" onClick={nextQuestion}>下一題</button>}</div>}
       </section>}
