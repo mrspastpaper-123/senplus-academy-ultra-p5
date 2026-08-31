@@ -130,10 +130,14 @@ export default function Home() {
   }
 
   function splitReadingQuestion(questionText: string) {
-    const marker = "\n\n問題：";
-    const markerIndex = questionText.indexOf(marker);
+    const fullWidthIndex = questionText.lastIndexOf("問題：");
+    const halfWidthIndex = questionText.lastIndexOf("問題:");
+    const markerIndex = Math.max(fullWidthIndex, halfWidthIndex);
     if (markerIndex < 0) return { passage: "閱讀理解", prompt: questionText };
-    return { passage: questionText.slice(0, markerIndex).trim(), prompt: questionText.slice(markerIndex + marker.length).trim() };
+    return {
+      passage: questionText.slice(0, markerIndex).trim(),
+      prompt: questionText.slice(markerIndex + 3).trim(),
+    };
   }
 
   const readingGroups = useMemo(() => {
