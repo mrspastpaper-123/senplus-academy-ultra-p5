@@ -130,7 +130,7 @@ export default function Home() {
   const [feedbackReports, setFeedbackReports] = useState<FeedbackReport[]>([]);
   const [feedbackListLoading, setFeedbackListLoading] = useState(false);
   const currentQuestion = questions[currentIndex] || null;
-  const isReadingUnit = activeUnit?.code.startsWith("5CR") || false;
+  const isReadingUnit = activeUnit ? /^(5CR|5ER)/.test(activeUnit.code) : false;
   const isWritingUnit = activeUnit?.code.startsWith("5CW") || false;
   const writingCharCount = writingContent.replace(/\\s/g, "").length;
   const displayedOptions = useMemo(() => {
@@ -152,13 +152,15 @@ export default function Home() {
   }
 
   function splitReadingQuestion(questionText: string) {
-    const fullWidthIndex = questionText.lastIndexOf("問題：");
-    const halfWidthIndex = questionText.lastIndexOf("問題:");
-    const markerIndex = Math.max(fullWidthIndex, halfWidthIndex);
+    const markers = ["問題：", "問題:", "Question:"];
+    const matchedMarker = markers
+      .map((marker) => ({ marker, index: questionText.lastIndexOf(marker) }))
+      .sort((a, b) => b.index - a.index)[0];
+    const markerIndex = matchedMarker.index;
     if (markerIndex < 0) return { passage: "閱讀理解", prompt: questionText };
     return {
       passage: questionText.slice(0, markerIndex).trim(),
-      prompt: questionText.slice(markerIndex + 3).trim(),
+      prompt: questionText.slice(markerIndex + matchedMarker.marker.length).trim(),
     };
   }
 
@@ -686,11 +688,11 @@ export default function Home() {
     const displayQuestionText = (question: WrongQuestion | undefined) => {
       const text = question?.question_text || "題目內容暫時未能顯示";
       const code = nodeMap.get(question?.node_id || 0)?.code || "";
-      return code.startsWith("5CR") ? splitReadingQuestion(text).prompt : text;
+      return /^(5CR|5ER)/.test(code) ? splitReadingQuestion(text).prompt : text;
     };
     const readingSources = Array.from(grouped.reduce((map, row) => {
       const node = nodeMap.get(row.question?.node_id || 0);
-      if (!node?.code.startsWith("5CR") || !row.question?.question_text) return map;
+      if (!node || !/^(5CR|5ER)/.test(node.code) || !row.question?.question_text) return map;
       const { passage } = splitReadingQuestion(row.question.question_text);
       if (passage !== "閱讀理解") map.set(`${node.code}:${passage}`, { code: node.code, title: node.title_zh, passage });
       return map;
