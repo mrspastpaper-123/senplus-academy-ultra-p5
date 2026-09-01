@@ -421,10 +421,11 @@ export default function Home() {
   }
 
   async function startWritingTask(unit: MathsUnit) {
+    const previousPromptId = writingPrompt?.prompt_id ?? null;
     setActiveSubject("chinese");
     setActiveUnit(unit); setView("practice"); setPracticeLoading(true); setPracticeMessage("");
     setQuestions([]); setWritingPrompt(null); setWritingContent(""); setWritingResult(null);
-    const { data, error } = await supabase.rpc("start_writing_task", { p_node_id: unit.id });
+    const { data, error } = await supabase.rpc("start_writing_task", { p_node_id: unit.id, p_exclude_prompt_id: previousPromptId });
     if (error || !data?.success) {
       setPracticeMessage(data?.reason === "no_prompt" ? "這個單元目前未有作文題目。" : "未能載入作文題目，請先執行作文工作室 SQL。");
     } else {
