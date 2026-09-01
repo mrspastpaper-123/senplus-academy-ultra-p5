@@ -68,3 +68,5 @@
 .writing-feedback small{color:#826d35}
 .writing-result .retry-button{justify-self:start}
 @media(max-width:760px){.writing-workshop{padding:18px}.writing-workshop-head{display:block}.writing-count{margin-top:16px}.writing-actions{position:static;display:grid}.writing-actions .submit-answer{width:100%}.writing-rubric{grid-template-columns:1fr 1fr}.writing-editor{min-height:360px}}
+
+.writing-result .retry-button{justify-self:start;width:auto;min-width:180px;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 20px;border:0;border-radius:14px;background:#1f8275;color:#fff;font-weight:800;line-height:1.2;white-space:nowrap}
