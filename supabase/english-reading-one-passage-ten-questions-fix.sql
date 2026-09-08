@@ -29,20 +29,20 @@ begin
   end if;
 
   if v_node_code ~ '^5ER' then
-    select split_part(q.question_text,E'\n\nQuestion:',1)
+    select trim(split_part(q.question_text,'Question:',1))
     into v_passage
     from public.questions q
     where q.node_id=p_node_id and q.status='published'
-    group by split_part(q.question_text,E'\n\nQuestion:',1)
+    group by trim(split_part(q.question_text,'Question:',1))
     having count(*) >= 10
     order by random()
     limit 1;
   else
-    select split_part(q.question_text,E'\n\n問題：',1)
+    select trim(split_part(q.question_text,'問題：',1))
     into v_passage
     from public.questions q
     where q.node_id=p_node_id and q.status='published'
-    group by split_part(q.question_text,E'\n\n問題：',1)
+    group by trim(split_part(q.question_text,'問題：',1))
     having count(*) >= 10
     order by random()
     limit 1;
@@ -67,7 +67,7 @@ begin
     from public.questions q
     where q.node_id=p_node_id
       and q.status='published'
-      and split_part(q.question_text,E'\n\nQuestion:',1)=v_passage
+      and trim(split_part(q.question_text,'Question:',1))=v_passage
     order by q.id
     limit 10;
   else
@@ -76,7 +76,7 @@ begin
     from public.questions q
     where q.node_id=p_node_id
       and q.status='published'
-      and split_part(q.question_text,E'\n\n問題：',1)=v_passage
+      and trim(split_part(q.question_text,'問題：',1))=v_passage
     order by q.id
     limit 10;
   end if;
@@ -95,7 +95,7 @@ grant execute on function public.start_reading_practice(bigint) to authenticated
 
 commit;
 
-select n.code,n.title_en,count(distinct split_part(q.question_text,E'\n\nQuestion:',1))
+select n.code,n.title_en,count(distinct trim(split_part(q.question_text,'Question:',1)))
   filter(where q.status='published') as complete_passages
 from public.curriculum_nodes n
 left join public.questions q on q.node_id=n.id
