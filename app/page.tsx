@@ -29,6 +29,8 @@ type WrongQuestion = { id: number; node_id: number; question_text: string; optio
 type WrongAnswerKey = { question_id: number; correct_answer: unknown; explanation: string | null; hint: string | null };
 type FeedbackReport = { id: number; user_id: string; category: string; subject: string; message: string; page_context: string | null; status: string; admin_note: string | null; created_at: string };
 type AppView = "subjects" | "chinese" | "english" | "maths" | "humanities" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
+type AuthMode = "login" | "register";
+type RegistrationRole = "student" | "parent";
 
 // These are browser-safe Supabase connection values. Database security remains
 // enforced by Supabase authentication and row-level security policies.
@@ -59,6 +61,16 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [registrationRole, setRegistrationRole] = useState<RegistrationRole>("student");
+  const [registrationName, setRegistrationName] = useState("");
+  const [registrationEmail, setRegistrationEmail] = useState("");
+  const [registrationPassword, setRegistrationPassword] = useState("");
+  const [registrationPasswordConfirm, setRegistrationPasswordConfirm] = useState("");
+  const [registrationConsent, setRegistrationConsent] = useState(false);
+  const [registrationLoading, setRegistrationLoading] = useState(false);
+  const [registrationMessage, setRegistrationMessage] = useState("");
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const [passwordChangeMessage, setPasswordChangeMessage] = useState("");
@@ -180,7 +192,11 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => { setSession(nextSession); setLoading(false); });
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) setProfile(null);
+      setLoading(false);
+    });
     return () => data.subscription.unsubscribe();
   }, [supabase]);
 
@@ -213,6 +229,55 @@ export default function Home() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setMessage("電郵或密碼不正確，請再試一次。");
     setLoading(false);
+  }
+
+  async function registerAccount(event: FormEvent) {
+    event.preventDefault();
+    setRegistrationMessage("");
+    setRegistrationSuccess(false);
+    const cleanName = registrationName.trim();
+    const cleanEmail = registrationEmail.trim().toLowerCase();
+    if (cleanName.length < 2) {
+      setRegistrationMessage("請輸入至少2個字的姓名。");
+      return;
+    }
+    if (registrationPassword.length < 8 || registrationPassword.length > 72) {
+      setRegistrationMessage("密碼必須為8至72個字元。");
+      return;
+    }
+    if (registrationPassword !== registrationPasswordConfirm) {
+      setRegistrationMessage("兩次輸入的密碼不一致。");
+      return;
+    }
+    if (!registrationConsent) {
+      setRegistrationMessage(registrationRole === "student" ? "請確認已獲家長或監護人同意。" : "請確認你同意私隱聲明。");
+      return;
+    }
+    setRegistrationLoading(true);
+    const { data, error } = await supabase.auth.signUp({
+      email: cleanEmail,
+      password: registrationPassword,
+      options: {
+        emailRedirectTo: window.location.origin,
+        data: {
+          display_name: cleanName,
+          requested_role: registrationRole,
+          grade: registrationRole === "student" ? "P5" : null,
+          signup_source: "self_service",
+        },
+      },
+    });
+    if (error) {
+      const alreadyRegistered = /already|registered|exists/i.test(error.message);
+      setRegistrationMessage(alreadyRegistered ? "這個電郵已經註冊，請返回登入。" : "暫時未能建立帳戶，請檢查資料後再試。");
+    } else if (data.session) {
+      setRegistrationSuccess(true);
+      setRegistrationMessage("帳戶已建立，正在進入學習平台。");
+    } else {
+      setRegistrationSuccess(true);
+      setRegistrationMessage("帳戶已建立。請到電郵信箱按確認連結，然後返回登入。");
+    }
+    setRegistrationLoading(false);
   }
 
   async function signOut() { await supabase.auth.signOut(); setMessage(""); }
@@ -612,7 +677,7 @@ export default function Home() {
         <section><h2>收集的資料</h2><p>平台會保存帳戶姓名、電郵、年級、登入裝置記錄、練習答案與成績，以及你主動提交的問題回報。</p></section>
         <section><h2>使用目的</h2><p>資料只用於帳戶登入、安全管理、提供學習練習、整理學習成績及處理意見。</p></section>
         <section className="policy-warning"><h2>請勿輸入敏感資料</h2><p>請不要提交住址、電話、身份證或護照號碼、健康資料、銀行或付款資料。問題回報只需描述平台問題。</p></section>
-        <section><h2>查閱與保安</h2><p>學生只可查看自己的學習內容；獲授權管理員可查看帳戶、成績及回報，以管理試用。請勿與他人分享密碼。</p></section>
+        <section><h2>查閱與保安</h2><p>學生只可查看自己的學習內容；家長帳戶日後只可查看已連結子女的資料；獲授權管理員可查看帳戶、成績及回報，以管理平台。請勿與他人分享密碼。</p></section>
         <section><h2>保存、更正與刪除</h2><p>如需更正或刪除試用資料，請聯絡 SENPlus+ 管理員。試用完結後，管理員可按需要刪除測試帳戶及相關記錄。</p></section>
         <section><h2>服務供應</h2><p>平台使用 Supabase 及網站託管服務處理必要資料。我們不會出售學生資料。</p></section>
       </div>
@@ -627,15 +692,35 @@ export default function Home() {
         <p className="intro-copy">為香港小五學生而設的個人化學習空間，以清晰步驟建立信心，讓練習變得自在而有方向。</p>
         <div className="subject-dots" aria-label="五個科目">{subjects.map((subject) => <span key={subject.name}>{subject.name}</span>)}</div>
       </section>
-      <section className="login-panel"><form className="login-card" onSubmit={signIn}>
+      <section className="login-panel"><div className="login-card">
         <div className="mobile-brand"><div className="brand-mark">S+</div><span>SENPlus+</span></div>
-        <p className="eyebrow">P5 學習平台</p><h2>歡迎回來</h2><p className="form-note">請使用學校提供的帳戶登入。</p>
-        <label>電郵地址<input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>
-        <label>密碼<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="輸入密碼" /></label>
-        {message && <p className="error-message">{message}</p>}
-        <button type="submit" disabled={loading}>{loading ? "登入中…" : "登入學習平台"}</button>
-        <p className="privacy-note">帳戶由管理員建立，學生不能自行註冊。<button type="button" onClick={() => setView("privacy")}>查看私隱聲明</button></p>
-      </form></section>
+        <div className="auth-tabs" role="tablist" aria-label="登入或註冊">
+          <button type="button" role="tab" aria-selected={authMode === "login"} className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setMessage(""); }}>登入</button>
+          <button type="button" role="tab" aria-selected={authMode === "register"} className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setRegistrationMessage(""); }}>建立帳戶</button>
+        </div>
+        {authMode === "login" ? <form onSubmit={signIn}>
+          <p className="eyebrow">P5 學習平台</p><h2>歡迎回來</h2><p className="form-note">使用你的帳戶登入學習平台。</p>
+          <label>電郵地址<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>
+          <label>密碼<input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="輸入密碼" /></label>
+          {message && <p className="error-message">{message}</p>}
+          <button type="submit" disabled={loading}>{loading ? "登入中…" : "登入學習平台"}</button>
+          <p className="privacy-note">還沒有帳戶？<button type="button" onClick={() => setAuthMode("register")}>學生或家長可自行建立</button><br /><button type="button" onClick={() => setView("privacy")}>查看私隱聲明</button></p>
+        </form> : <form onSubmit={registerAccount}>
+          <p className="eyebrow">P5 學習平台</p><h2>建立帳戶</h2><p className="form-note">選擇身分並填寫基本資料。</p>
+          <fieldset className="role-choice"><legend>帳戶身分</legend>
+            <label className={registrationRole === "student" ? "selected" : ""}><input type="radio" name="registration-role" value="student" checked={registrationRole === "student"} onChange={() => { setRegistrationRole("student"); setRegistrationConsent(false); }} /><span><strong>學生</strong><small>P5 練習及成績紀錄</small></span></label>
+            <label className={registrationRole === "parent" ? "selected" : ""}><input type="radio" name="registration-role" value="parent" checked={registrationRole === "parent"} onChange={() => { setRegistrationRole("parent"); setRegistrationConsent(false); }} /><span><strong>家長</strong><small>家長帳戶</small></span></label>
+          </fieldset>
+          <label>姓名<input type="text" required minLength={2} maxLength={60} autoComplete="name" value={registrationName} onChange={(e) => setRegistrationName(e.target.value)} placeholder={registrationRole === "student" ? "學生姓名" : "家長姓名"} /></label>
+          <label>電郵地址<input type="email" required autoComplete="email" value={registrationEmail} onChange={(e) => setRegistrationEmail(e.target.value)} placeholder="name@example.com" /></label>
+          <label>密碼<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={registrationPassword} onChange={(e) => setRegistrationPassword(e.target.value)} placeholder="8至72個字元" /></label>
+          <label>確認密碼<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={registrationPasswordConfirm} onChange={(e) => setRegistrationPasswordConfirm(e.target.value)} placeholder="再次輸入密碼" /></label>
+          <label className="consent-check"><input type="checkbox" checked={registrationConsent} onChange={(e) => setRegistrationConsent(e.target.checked)} /><span>{registrationRole === "student" ? "我已獲家長或監護人同意建立帳戶，並同意" : "我同意"} <button type="button" onClick={() => setView("privacy")}>私隱聲明</button>。</span></label>
+          {registrationMessage && <p className={registrationSuccess ? "registration-success" : "error-message"}>{registrationMessage}</p>}
+          <button type="submit" disabled={registrationLoading}>{registrationLoading ? "建立中…" : <><UserPlus size={17} />建立{registrationRole === "student" ? "學生" : "家長"}帳戶</>}</button>
+          <p className="privacy-note">已經有帳戶？<button type="button" onClick={() => setAuthMode("login")}>返回登入</button></p>
+        </form>}
+      </div></section>
     </main>
   );
 
