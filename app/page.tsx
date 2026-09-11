@@ -43,8 +43,20 @@ function answerValue(value: unknown) {
   return value === null || value === undefined ? "—" : String(value);
 }
 
+function localiseCurrency(value: string) {
+  return value.replaceAll("£", "$");
+}
+
 function cleanMarkedText(value: string) {
-  return value.replaceAll("\u0332", "");
+  return localiseCurrency(value).replaceAll("\u0332", "");
+}
+
+function localiseQuestion<T extends PracticeQuestion>(question: T): T {
+  return {
+    ...question,
+    question_text: localiseCurrency(question.question_text),
+    options: question.options.map((option) => ({ ...option, text: localiseCurrency(option.text) })),
+  };
 }
 
 function renderMarkedText(value: string) {
@@ -380,7 +392,14 @@ export default function Home() {
         supabase.from("question_answer_keys").select("question_id, correct_answer, explanation, hint").in("question_id", questionIds),
       ]);
       if (questionResult.error || keyResult.error) setErrorsMessage("錯題已載入，但部分題目解釋暫時未能顯示。");
-      else { setWrongQuestions((questionResult.data || []) as WrongQuestion[]); setWrongAnswerKeys((keyResult.data || []) as WrongAnswerKey[]); }
+      else {
+        setWrongQuestions(((questionResult.data || []) as WrongQuestion[]).map(localiseQuestion));
+        setWrongAnswerKeys(((keyResult.data || []) as WrongAnswerKey[]).map((key) => ({
+          ...key,
+          explanation: key.explanation ? localiseCurrency(key.explanation) : null,
+          hint: key.hint ? localiseCurrency(key.hint) : null,
+        })));
+      }
     }
     setErrorsLoading(false);
   }
@@ -577,7 +596,7 @@ export default function Home() {
     const { data: questions, error: questionError } = await supabase.from("questions").select("id, question_text, options").in("id", links.map((link) => link.question_id));
     if (questionError || !questions?.length) setPracticeMessage("未能讀取題目內容。");
     else {
-      const questionMap = new Map(questions.map((item) => [item.id, item as PracticeQuestion]));
+      const questionMap = new Map(questions.map((item) => [item.id, localiseQuestion(item as PracticeQuestion)]));
       setQuestions(links.map((link) => questionMap.get(link.question_id)).filter(Boolean) as PracticeQuestion[]);
     }
     setPracticeLoading(false);
