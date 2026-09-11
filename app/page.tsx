@@ -28,7 +28,7 @@ type WrongResponse = { id: number; attempt_id: number; question_id: number; sele
 type WrongQuestion = { id: number; node_id: number; question_text: string; options: { id: string; text: string }[] };
 type WrongAnswerKey = { question_id: number; correct_answer: unknown; explanation: string | null; hint: string | null };
 type FeedbackReport = { id: number; user_id: string; category: string; subject: string; message: string; page_context: string | null; status: string; admin_note: string | null; created_at: string };
-type AppView = "subjects" | "chinese" | "english" | "maths" | "humanities" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
+type AppView = "subjects" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
 type AuthMode = "login" | "register";
 type RegistrationRole = "student" | "parent";
 
@@ -100,11 +100,14 @@ export default function Home() {
   const [humanitiesUnits, setHumanitiesUnits] = useState<MathsUnit[]>([]);
   const [humanitiesUnitsLoading, setHumanitiesUnitsLoading] = useState(false);
   const [humanitiesUnitsMessage, setHumanitiesUnitsMessage] = useState("");
+  const [scienceUnits, setScienceUnits] = useState<MathsUnit[]>([]);
+  const [scienceUnitsLoading, setScienceUnitsLoading] = useState(false);
+  const [scienceUnitsMessage, setScienceUnitsMessage] = useState("");
   const [mathsUnits, setMathsUnits] = useState<MathsUnit[]>([]);
   const [unitsLoading, setUnitsLoading] = useState(false);
   const [unitsMessage, setUnitsMessage] = useState("");
   const [activeUnit, setActiveUnit] = useState<MathsUnit | null>(null);
-  const [activeSubject, setActiveSubject] = useState<"maths" | "chinese" | "english" | "humanities">("maths");
+  const [activeSubject, setActiveSubject] = useState<"maths" | "chinese" | "english" | "humanities" | "science">("maths");
   const [attemptId, setAttemptId] = useState<number | null>(null);
   const [questions, setQuestions] = useState<PracticeQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -549,6 +552,24 @@ export default function Home() {
     setHumanitiesUnitsLoading(false);
   }
 
+  async function openScience() {
+    setView("science");
+    if (scienceUnits.length) return;
+    setScienceUnitsLoading(true); setScienceUnitsMessage("");
+    const { data: subject, error: subjectError } = await supabase.from("curriculum_subjects").select("id").eq("grade", "P5").eq("code", "science").single();
+    if (subjectError || !subject) { setScienceUnitsMessage("未能讀取P5科學科課程，請稍後再試。"); setScienceUnitsLoading(false); return; }
+    const { data: domains, error: domainsError } = await supabase.from("curriculum_domains").select("id, name_zh, code").eq("subject_id", subject.id);
+    if (domainsError || !domains?.length) { setScienceUnitsMessage("未能找到P5科學科範疇，請聯絡管理員。"); setScienceUnitsLoading(false); return; }
+    const { data, error } = await supabase.from("curriculum_nodes").select("id, domain_id, code, title_zh, title_en, difficulty").in("domain_id", domains.map((domain) => domain.id)).eq("is_active", true).order("code");
+    if (error) {
+      setScienceUnitsMessage("未能載入科學科單元，請稍後再試。");
+    } else {
+      const domainMap = new Map(domains.map((domain) => [domain.id, { title_zh: domain.name_zh, code: domain.code }]));
+      setScienceUnits((data || []).filter((unit) => /^5SC[1-7]$/.test(unit.code)).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
+    }
+    setScienceUnitsLoading(false);
+  }
+
   async function startWritingTask(unit: MathsUnit) {
     const previousPromptId = writingPrompt?.prompt_id ?? null;
     setActiveSubject("chinese");
@@ -576,7 +597,7 @@ export default function Home() {
     setPracticeLoading(false);
   }
 
-  async function startUnit(unit: MathsUnit, subject: "maths" | "chinese" | "english" | "humanities" = activeSubject) {
+  async function startUnit(unit: MathsUnit, subject: "maths" | "chinese" | "english" | "humanities" | "science" = activeSubject) {
     if (subject === "maths" && !enabledMathsUnits.has(unit.code)) return;
     if (subject === "chinese" && unit.code.startsWith("5CW")) { await startWritingTask(unit); return; }
     setActiveSubject(subject);
@@ -991,8 +1012,8 @@ export default function Home() {
   if (view === "practice") return <main className="dashboard-page">
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap practice-wrap">
-      <button className="back-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回{activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : "數學"}單位</button>
-      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : "數學"} · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
+      <button className="back-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回{activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}單位</button>
+      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"} · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {isReadingUnit && questions.length > 0 && <section className="reading-paper">
@@ -1072,10 +1093,23 @@ export default function Home() {
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
   </main>;
 
+  if (view === "science") return <main className="dashboard-page">
+    <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
+    <section className="dashboard-wrap units-wrap science-units">
+      <button className="back-button" onClick={() => setView("subjects")}><ArrowLeft size={18} />返回科目</button>
+      <div className="units-heading"><div className="subject-icon green"><Microscope size={25} /></div><div><p className="eyebrow">P5 科學科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供科學解析並記錄錯題。</p></div></div>
+      {scienceUnitsLoading && <div className="unit-status">正在載入7個科學科單元…</div>}
+      {scienceUnitsMessage && <div className="unit-status error-message">{scienceUnitsMessage}</div>}
+      {!scienceUnitsLoading && !scienceUnitsMessage && <div className="unit-grid">{scienceUnits.map((unit) => <button className="unit-card science-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "science")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "科學科"}</span><span>開始練習</span></div></button>)}</div>}
+      {!scienceUnitsLoading && !scienceUnitsMessage && scienceUnits.length === 0 && <div className="unit-status">目前尚未建立科學科單元。</div>}
+    </section>
+    <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
+  </main>;
+
   return <main className="dashboard-page">
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap"><div className="welcome-row"><div className="welcome"><p className="eyebrow">今日學習</p><h1>你好，{profile?.display_name || "同學"}</h1><p>選擇一個科目，開始今天的小五練習。</p></div>{profile?.role === "admin" && <button className="admin-entry" onClick={openAdminDashboard}><LayoutDashboard size={20} /><span><strong>管理員儀表板</strong><small>查看學習成績與進度</small></span></button>}</div>
-      <div className="subject-grid">{subjects.map(({ name, note, icon: Icon, colour }) => name === "數學" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openMaths}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : name === "中文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openChinese}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">查看課程</span></button> : name === "英文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openEnglish}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">Start learning</span></button> : name === "人文科" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openHumanities}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : <article className={`subject-card ${colour}`} key={name}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming">即將開放</span></article>)}</div>
+      <div className="subject-grid">{subjects.map(({ name, note, icon: Icon, colour }) => name === "數學" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openMaths}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : name === "中文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openChinese}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">查看課程</span></button> : name === "英文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openEnglish}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">Start learning</span></button> : name === "人文科" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openHumanities}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : <button className={`subject-card subject-button ${colour}`} key={name} onClick={openScience}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button>)}</div>
       <aside className="progress-card"><div><span>你的年級</span><strong>{profile?.grade || "P5"}</strong></div><div><span>學習狀態</span><strong>準備開始</strong></div><div><span>今日目標</span><strong>完成 1 個練習</strong></div></aside>
       <footer className="site-footer"><button onClick={openFeedback}>問題回報／意見</button><button onClick={() => setView("privacy")}>私隱聲明</button></footer>
     </section>
