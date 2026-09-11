@@ -1966,7 +1966,7 @@ where not exists (
   where q.node_id = n.id and q.question_text = t.question_text
 );
 
-insert into public.answer_keys (question_id, correct_answer, explanation, hint)
+insert into public.question_answer_keys (question_id, correct_answer, explanation, hint)
 select q.id, t.correct_answer, t.explanation, t.hint
 from tmp_science_questions t
 join public.curriculum_nodes n on n.code = t.node_code
