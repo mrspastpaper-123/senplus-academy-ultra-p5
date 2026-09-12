@@ -85,6 +85,12 @@ export default function Home() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [authMode, setAuthMode] = useState<AuthMode>("login");
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetRequestLoading, setResetRequestLoading] = useState(false);
+  const [resetRequestMessage, setResetRequestMessage] = useState("");
+  const [resetRequestSuccess, setResetRequestSuccess] = useState(false);
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [registrationRole, setRegistrationRole] = useState<RegistrationRole>("student");
   const [registrationName, setRegistrationName] = useState("");
   const [registrationEmail, setRegistrationEmail] = useState("");
@@ -230,7 +236,8 @@ export default function Home() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
-    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (event === "PASSWORD_RECOVERY") setPasswordRecoveryMode(true);
       setSession(nextSession);
       if (!nextSession) setProfile(null);
       setLoading(false);
@@ -340,6 +347,58 @@ export default function Home() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) setMessage("電郵或密碼不正確，請再試一次。");
     setLoading(false);
+  }
+
+  async function requestPasswordReset(event: FormEvent) {
+    event.preventDefault();
+    const cleanEmail = resetEmail.trim().toLowerCase();
+    setResetRequestMessage("");
+    setResetRequestSuccess(false);
+    if (!cleanEmail) {
+      setResetRequestMessage("請輸入帳戶的電郵地址。");
+      return;
+    }
+    setResetRequestLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo: window.location.origin,
+    });
+    if (error) {
+      const detail = `${error.message || ""} ${(error as { code?: string }).code || ""}`.toLowerCase();
+      setResetRequestMessage(/rate|limit|too many/.test(detail)
+        ? "發送次數太頻密，請稍候約一小時後再試。"
+        : "暫時未能發送重設電郵，請稍後再試。");
+    } else {
+      setResetRequestSuccess(true);
+      setResetRequestMessage("重設密碼電郵已發送。請使用最新一封郵件內的連結。");
+    }
+    setResetRequestLoading(false);
+  }
+
+  async function completePasswordRecovery(event: FormEvent) {
+    event.preventDefault();
+    setPasswordChangeMessage("");
+    if (newPassword.length < 8 || newPassword.length > 72) {
+      setPasswordChangeMessage("新密碼必須為8至72個字元。");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setPasswordChangeMessage("兩次輸入的新密碼不一致。");
+      return;
+    }
+    setPasswordChangeLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      setPasswordChangeMessage("重設連結可能已過期，請返回登入頁重新申請。");
+    } else {
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPasswordRecoveryMode(false);
+      await supabase.auth.signOut();
+      setMessage("密碼已更新，請使用新密碼登入。");
+      setForgotPasswordMode(false);
+      setAuthMode("login");
+    }
+    setPasswordChangeLoading(false);
   }
 
   async function registerAccount(event: FormEvent) {
@@ -830,6 +889,20 @@ export default function Home() {
     </section></main>
   );
 
+  if (passwordRecoveryMode && session) return (
+    <main className="password-change-page"><section className="password-change-card">
+      <div className="password-change-icon"><KeyRound size={34} aria-hidden="true" /></div>
+      <p className="eyebrow">帳戶安全</p><h1>設定新密碼</h1>
+      <p className="password-change-copy">請輸入8至72個字元的新密碼。完成後，你需要使用新密碼重新登入。</p>
+      <form onSubmit={completePasswordRecovery}>
+        <label>新密碼<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="輸入新密碼" /></label>
+        <label>確認新密碼<input type="password" required minLength={8} maxLength={72} autoComplete="new-password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} placeholder="再次輸入新密碼" /></label>
+        {passwordChangeMessage && <p className="error-message">{passwordChangeMessage}</p>}
+        <button type="submit" disabled={passwordChangeLoading}>{passwordChangeLoading ? "正在更新…" : "更新密碼"}</button>
+      </form>
+    </section></main>
+  );
+
   if (!session) return (
     <main className="login-page">
       <section className="login-intro">
@@ -841,15 +914,22 @@ export default function Home() {
       <section className="login-panel"><div className="login-card">
         <div className="mobile-brand"><div className="brand-mark">S+</div><span>SENPlus+</span></div>
         <div className="auth-tabs" role="tablist" aria-label="登入或註冊">
-          <button type="button" role="tab" aria-selected={authMode === "login"} className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setMessage(""); }}>登入</button>
-          <button type="button" role="tab" aria-selected={authMode === "register"} className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setRegistrationMessage(""); }}>建立帳戶</button>
+          <button type="button" role="tab" aria-selected={authMode === "login"} className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setForgotPasswordMode(false); setMessage(""); }}>登入</button>
+          <button type="button" role="tab" aria-selected={authMode === "register"} className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setForgotPasswordMode(false); setRegistrationMessage(""); }}>建立帳戶</button>
         </div>
-        {authMode === "login" ? <form onSubmit={signIn}>
+        {authMode === "login" && forgotPasswordMode ? <form onSubmit={requestPasswordReset}>
+          <p className="eyebrow">帳戶安全</p><h2>忘記密碼</h2><p className="form-note">輸入學生或家長帳戶的電郵，我們會發送安全重設連結。</p>
+          <label>電郵地址<input type="email" required autoComplete="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} placeholder="name@example.com" /></label>
+          {resetRequestMessage && <p className={resetRequestSuccess ? "registration-success" : "error-message"}>{resetRequestMessage}</p>}
+          <button type="submit" disabled={resetRequestLoading}>{resetRequestLoading ? "正在發送…" : "發送重設密碼電郵"}</button>
+          <p className="privacy-note"><button type="button" onClick={() => { setForgotPasswordMode(false); setResetRequestMessage(""); }}>返回登入</button></p>
+        </form> : authMode === "login" ? <form onSubmit={signIn}>
           <p className="eyebrow">P5 學習平台</p><h2>歡迎回來</h2><p className="form-note">使用你的帳戶登入學習平台。</p>
           <label>電郵地址<input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" /></label>
           <label>密碼<input type="password" required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="輸入密碼" /></label>
           {message && <p className="error-message">{message}</p>}
           <button type="submit" disabled={loading}>{loading ? "登入中…" : "登入學習平台"}</button>
+          <p className="forgot-password-link"><button type="button" onClick={() => { setResetEmail(email); setForgotPasswordMode(true); setResetRequestMessage(""); }}>忘記密碼？</button></p>
           <p className="privacy-note">還沒有帳戶？<button type="button" onClick={() => setAuthMode("register")}>學生或家長可自行建立</button><br /><button type="button" onClick={() => setView("privacy")}>查看私隱聲明</button></p>
         </form> : <form onSubmit={registerAccount}>
           <p className="eyebrow">P5 學習平台</p><h2>建立帳戶</h2><p className="form-note">選擇身分並填寫基本資料。</p>
