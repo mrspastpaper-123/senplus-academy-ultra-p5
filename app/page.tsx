@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, Session } from "@supabase/supabase-js";
-import { AlertTriangle, ArrowLeft, BarChart3, BookOpen, Brain, CheckCircle2, KeyRound, Languages, LayoutDashboard, Lightbulb, LogOut, MessageSquareText, Microscope, Plus, RotateCcw, Search, ShieldCheck, Smartphone, Sparkles, Target, Trophy, UserCog, UserPlus, Users, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, BarChart3, BookOpen, Brain, CheckCircle2, Clock3, KeyRound, Languages, LayoutDashboard, Lightbulb, Link2, LogOut, MessageSquareText, Microscope, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, Smartphone, Sparkles, Target, Trophy, UserCheck, UserCog, UserPlus, Users, X } from "lucide-react";
 
 const subjects = [
   { name: "中文", note: "閱讀、語文與寫作", icon: BookOpen, colour: "coral" },
@@ -28,7 +28,13 @@ type WrongResponse = { id: number; attempt_id: number; question_id: number; sele
 type WrongQuestion = { id: number; node_id: number; question_text: string; options: { id: string; text: string }[] };
 type WrongAnswerKey = { question_id: number; correct_answer: unknown; explanation: string | null; hint: string | null };
 type FeedbackReport = { id: number; user_id: string; category: string; subject: string; message: string; page_context: string | null; status: string; admin_note: string | null; created_at: string };
-type AppView = "subjects" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
+type ParentAttempt = { id: number; node_code: string; title_zh: string; status: string; total_questions: number; answered_count: number; correct_count: number; score: number | null; started_at: string; completed_at: string | null };
+type SubjectPerformance = { subject: string; attempts: number; completed: number; average: number };
+type ParentChild = { student_id: string; display_name: string; grade: string; attempt_count: number; completed_count: number; average_score: number; wrong_count: number; last_active: string | null; subject_performance: SubjectPerformance[]; attempts: ParentAttempt[] };
+type ParentPending = { student_id: string; display_name: string; requested_at: string };
+type ParentRequest = { parent_id: string; display_name: string; status: "pending" | "approved"; requested_at: string; approved_at: string | null };
+type ParentError = { response_id: number; question_id: number; selected_answer: unknown; answered_at: string; node_code: string; title_zh: string; question_text: string; options: { id: string; text: string }[]; correct_answer: unknown; explanation: string | null; hint: string | null };
+type AppView = "subjects" | "parent" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
 type AuthMode = "login" | "register";
 type RegistrationRole = "student" | "parent";
 
@@ -41,6 +47,11 @@ function answerValue(value: unknown) {
   if (typeof value === "string") return value;
   if (value && typeof value === "object" && "id" in value) return String((value as { id: unknown }).id);
   return value === null || value === undefined ? "—" : String(value);
+}
+
+function parentAnswerText(error: ParentError, value: unknown) {
+  const id = answerValue(value);
+  return error.options?.find((option) => option.id === id)?.text || id;
 }
 
 function localiseCurrency(value: string) {
@@ -159,6 +170,18 @@ export default function Home() {
   const [reportLoading, setReportLoading] = useState(false);
   const [feedbackReports, setFeedbackReports] = useState<FeedbackReport[]>([]);
   const [feedbackListLoading, setFeedbackListLoading] = useState(false);
+  const [parentChildren, setParentChildren] = useState<ParentChild[]>([]);
+  const [parentPending, setParentPending] = useState<ParentPending[]>([]);
+  const [parentLoading, setParentLoading] = useState(false);
+  const [parentMessage, setParentMessage] = useState("");
+  const [parentInviteCode, setParentInviteCode] = useState("");
+  const [selectedParentChildId, setSelectedParentChildId] = useState<string | null>(null);
+  const [parentErrors, setParentErrors] = useState<ParentError[]>([]);
+  const [parentErrorsLoading, setParentErrorsLoading] = useState(false);
+  const [studentLinkCode, setStudentLinkCode] = useState("");
+  const [studentLinkExpiry, setStudentLinkExpiry] = useState<string | null>(null);
+  const [studentParentRequests, setStudentParentRequests] = useState<ParentRequest[]>([]);
+  const [familyLinkMessage, setFamilyLinkMessage] = useState("");
   const currentQuestion = questions[currentIndex] || null;
   const isReadingUnit = activeUnit ? /^(5CR|5ER)/.test(activeUnit.code) : false;
   const isWritingUnit = activeUnit?.code.startsWith("5CW") || false;
@@ -238,6 +261,79 @@ export default function Home() {
     }
     verifyAccess();
   }, [session, supabase]);
+
+  useEffect(() => {
+    if (profile?.role === "parent") {
+      setView("parent");
+      loadParentDashboard();
+    } else if (profile?.role === "student") {
+      loadStudentParentRequests();
+    }
+  }, [profile]);
+
+  async function loadParentDashboard() {
+    setParentLoading(true); setParentMessage("");
+    const { data, error } = await supabase.rpc("parent_get_dashboard");
+    if (error || !data?.success) {
+      setParentMessage("未能載入家長儀表板。請先確認已執行家長功能設定 SQL。");
+    } else {
+      const children = (data.children || []) as ParentChild[];
+      setParentChildren(children);
+      setParentPending((data.pending_requests || []) as ParentPending[]);
+      setSelectedParentChildId((current) => current && children.some((child) => child.student_id === current) ? current : children[0]?.student_id || null);
+    }
+    setParentLoading(false);
+  }
+
+  async function linkStudentToParent(event: FormEvent) {
+    event.preventDefault(); setParentMessage("");
+    const code = parentInviteCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{6}$/.test(code)) { setParentMessage("請輸入學生提供的6位邀請碼。"); return; }
+    setParentLoading(true);
+    const { data, error } = await supabase.rpc("parent_link_student", { p_code: code });
+    if (error || !data?.success) setParentMessage(data?.message || "邀請碼無效或已過期，請學生重新產生。");
+    else {
+      setParentInviteCode("");
+      setParentMessage(`已向${data.display_name || "學生"}送出連結申請，等待學生確認。`);
+      await loadParentDashboard();
+    }
+    setParentLoading(false);
+  }
+
+  async function unlinkParentChild(child: ParentChild) {
+    if (!window.confirm(`確定解除與${child.display_name}的連結嗎？`)) return;
+    setParentLoading(true); setParentMessage("");
+    const { error } = await supabase.rpc("parent_unlink_student", { p_student_id: child.student_id });
+    if (error) setParentMessage("未能解除連結，請稍後再試。"); else await loadParentDashboard();
+    setParentLoading(false);
+  }
+
+  async function loadParentErrors(studentId: string) {
+    setSelectedParentChildId(studentId); setParentErrorsLoading(true); setParentErrors([]); setParentMessage("");
+    const { data, error } = await supabase.rpc("parent_get_child_errors", { p_student_id: studentId });
+    if (error || !data?.success) setParentMessage("未能載入錯題，請稍後再試。");
+    else setParentErrors((data.errors || []) as ParentError[]);
+    setParentErrorsLoading(false);
+  }
+
+  async function createStudentParentCode() {
+    setFamilyLinkMessage("");
+    const { data, error } = await supabase.rpc("create_parent_link_code");
+    if (error || !data?.success) setFamilyLinkMessage("暫時未能產生邀請碼，請稍後再試。");
+    else { setStudentLinkCode(data.code); setStudentLinkExpiry(data.expires_at); setFamilyLinkMessage("邀請碼已產生，請只交給你的家長或監護人。"); }
+  }
+
+  async function loadStudentParentRequests() {
+    const { data, error } = await supabase.rpc("student_get_parent_requests");
+    if (!error && data?.success) setStudentParentRequests((data.requests || []) as ParentRequest[]);
+  }
+
+  async function respondToParentRequest(parentId: string, approve: boolean) {
+    setFamilyLinkMessage("");
+    const { error } = await supabase.rpc("student_respond_parent_request", { p_parent_id: parentId, p_approve: approve });
+    if (error) setFamilyLinkMessage("未能處理連結申請，請稍後再試。");
+    else { setFamilyLinkMessage(approve ? "已批准家長連結。" : "已拒絕連結申請。"); await loadStudentParentRequests(); }
+  }
 
   async function signIn(event: FormEvent) {
     event.preventDefault(); setLoading(true); setMessage("");
@@ -785,6 +881,31 @@ export default function Home() {
 
   if (profile && !profile.login_allowed) return <main className="status-page"><div className="status-card"><h1>帳戶暫停使用</h1><p>請聯絡 SENPlus+ 管理員重新啟用登入權限。</p><button onClick={signOut}>登出</button></div></main>;
 
+  if (view === "parent" && profile?.role === "parent") {
+    const selectedChild = parentChildren.find((child) => child.student_id === selectedParentChildId) || parentChildren[0];
+    const formatDate = (value: string | null) => value ? new Intl.DateTimeFormat("zh-HK", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value)) : "尚未開始";
+    return <main className="dashboard-page parent-dashboard-page">
+      <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>家長學習儀表板</span></div></div><div className="account"><span>{profile.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
+      <section className="dashboard-wrap parent-wrap">
+        <div className="parent-heading"><div><p className="eyebrow">家長專區</p><h1>子女學習概覽</h1><p>只顯示已由學生親自確認的連結及學習紀錄。</p></div><button onClick={loadParentDashboard} disabled={parentLoading}><RefreshCw size={17} />{parentLoading ? "更新中…" : "更新資料"}</button></div>
+        <section className="parent-link-panel"><div className="parent-link-copy"><div className="parent-link-icon"><Link2 size={25} /></div><div><h2>連結另一位子女</h2><p>請學生登入後產生6位邀請碼。提交後仍須由學生確認，家長才可查看資料。</p></div></div><form onSubmit={linkStudentToParent}><input aria-label="6位邀請碼" maxLength={6} value={parentInviteCode} onChange={(event) => setParentInviteCode(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} placeholder="例如 AB23CD" /><button type="submit" disabled={parentLoading}><UserPlus size={17} />送出連結申請</button></form></section>
+        {parentMessage && <div className={parentMessage.startsWith("已") ? "parent-notice success" : "parent-notice"}>{parentMessage}</div>}
+        {parentPending.length > 0 && <section className="pending-links"><div><Clock3 size={20} /><div><strong>等待學生確認</strong><p>{parentPending.map((item) => item.display_name).join("、")}尚未批准連結。</p></div></div></section>}
+        {parentLoading && !parentChildren.length ? <div className="unit-status">正在整理子女學習紀錄…</div> : parentChildren.length === 0 ? <section className="parent-empty"><UserCheck size={34} /><h2>尚未連結子女</h2><p>請子女登入學生帳戶產生邀請碼，再於上方提交連結申請。</p></section> : <>
+          <div className="child-tabs" role="tablist" aria-label="選擇子女">{parentChildren.map((child) => <button role="tab" aria-selected={selectedChild?.student_id === child.student_id} className={selectedChild?.student_id === child.student_id ? "active" : ""} key={child.student_id} onClick={() => { setSelectedParentChildId(child.student_id); setParentErrors([]); }}><strong>{child.display_name}</strong><span>{child.grade}</span></button>)}</div>
+          {selectedChild && <>
+            <section className="parent-child-hero"><div><p className="eyebrow">已確認連結</p><h2>{selectedChild.display_name}</h2><p>最近學習：{formatDate(selectedChild.last_active)}</p></div><button onClick={() => unlinkParentChild(selectedChild)}>解除連結</button></section>
+            <div className="metric-grid parent-metrics"><article><div className="metric-icon teal"><BarChart3 size={22} /></div><span>練習總次數</span><strong>{selectedChild.attempt_count}</strong><small>{selectedChild.completed_count}次已完成</small></article><article><div className="metric-icon purple"><Target size={22} /></div><span>平均分</span><strong>{Math.round(Number(selectedChild.average_score || 0))}<b>分</b></strong><small>已完成練習平均</small></article><article><div className="metric-icon green"><CheckCircle2 size={22} /></div><span>完成率</span><strong>{selectedChild.attempt_count ? Math.round((selectedChild.completed_count / selectedChild.attempt_count) * 100) : 0}<b>%</b></strong><small>完成／已開始</small></article><article><div className="metric-icon amber"><AlertTriangle size={22} /></div><span>錯誤作答</span><strong>{selectedChild.wrong_count}</strong><button className="metric-link" onClick={() => loadParentErrors(selectedChild.student_id)}>查看錯題</button></article></div>
+            <div className="parent-panels"><section className="admin-panel"><div className="panel-title"><div><p className="eyebrow">五科表現</p><h2>各科平均分</h2></div><span>{selectedChild.subject_performance?.length || 0}科</span></div>{selectedChild.subject_performance?.length ? <div className="unit-performance">{selectedChild.subject_performance.map((row) => <div key={row.subject}><div><strong>{row.subject}</strong><span>{row.attempts}次練習 · {row.completed}次完成 · 平均{Math.round(Number(row.average))}分</span></div><div className="performance-track"><span style={{ width: `${Math.round(Number(row.average))}%` }} /></div></div>)}</div> : <p className="empty-admin">尚未有科目成績。</p>}</section>
+            <section className="admin-panel recent-panel"><div className="panel-title"><div><p className="eyebrow">最新動態</p><h2>最近練習</h2></div><span>最近10項</span></div>{selectedChild.attempts?.length ? <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>單元</th><th>狀態</th><th>答對</th><th>分數</th><th>時間</th></tr></thead><tbody>{selectedChild.attempts.slice(0, 10).map((attempt) => <tr key={attempt.id}><td><strong>{attempt.node_code} {attempt.title_zh}</strong></td><td><span className={`status-pill ${attempt.status}`}>{attempt.status === "completed" ? "已完成" : "進行中"}</span></td><td>{attempt.correct_count}／{attempt.total_questions}</td><td><strong>{attempt.score === null ? "—" : `${attempt.score}分`}</strong></td><td>{formatDate(attempt.started_at)}</td></tr>)}</tbody></table></div> : <p className="empty-admin">尚未有練習紀錄。</p>}</section></div>
+            {(parentErrorsLoading || parentErrors.length > 0) && <section className="admin-panel parent-errors-panel"><div className="panel-title"><div><p className="eyebrow">錯題重溫</p><h2>{selectedChild.display_name}的最近錯題</h2></div><span>{parentErrorsLoading ? "載入中…" : `${parentErrors.length}項`}</span></div>{!parentErrorsLoading && <div className="wrong-question-list">{parentErrors.map((error) => <article className="wrong-question-card" key={error.response_id}><div className="wrong-question-head"><div><span className="unit-code">{error.node_code}</span><b>{error.title_zh}</b></div><time>{formatDate(error.answered_at)}</time></div><h3>{renderMarkedText(error.question_text)}</h3><div className="answer-comparison"><div className="student-wrong-answer"><span>學生答案</span><strong>{parentAnswerText(error, error.selected_answer)}</strong></div><div className="correct-answer"><span>正確答案</span><strong>{parentAnswerText(error, error.correct_answer)}</strong></div></div>{error.explanation && <div className="explanation-box"><Lightbulb size={18} /><div><strong>解題說明</strong><p>{renderMarkedText(error.explanation)}</p></div></div>}</article>)}</div>}</section>}
+          </>}
+        </>}
+        <footer className="site-footer"><button onClick={openFeedback}>問題回報／意見</button><button onClick={() => setView("privacy")}>私隱聲明</button></footer>
+      </section>
+    </main>;
+  }
+
   if (view === "feedback") return <main className="dashboard-page">
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>問題回報與意見</span></div></div><div className="account"><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="support-wrap"><button className="back-button" onClick={() => setView(feedbackReturnView)}><ArrowLeft size={18} />返回上一頁</button>
@@ -1109,6 +1230,7 @@ export default function Home() {
   return <main className="dashboard-page">
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap"><div className="welcome-row"><div className="welcome"><p className="eyebrow">今日學習</p><h1>你好，{profile?.display_name || "同學"}</h1><p>選擇一個科目，開始今天的小五練習。</p></div>{profile?.role === "admin" && <button className="admin-entry" onClick={openAdminDashboard}><LayoutDashboard size={20} /><span><strong>管理員儀表板</strong><small>查看學習成績與進度</small></span></button>}</div>
+      {profile?.role === "student" && <section className="student-family-panel"><div className="student-family-heading"><div className="parent-link-icon"><Link2 size={23} /></div><div><strong>家長連結</strong><p>產生一次性邀請碼，或處理家長的連結申請。</p></div><button onClick={createStudentParentCode}>{studentLinkCode ? "重新產生" : "產生邀請碼"}</button></div>{studentLinkCode && <div className="student-code-row"><div><span>一次性邀請碼</span><strong>{studentLinkCode}</strong><small>{studentLinkExpiry ? `${new Intl.DateTimeFormat("zh-HK", { hour: "2-digit", minute: "2-digit" }).format(new Date(studentLinkExpiry))} 前有效` : "30分鐘內有效"}</small></div><p>請只把邀請碼交給你的家長或監護人。家長提交後，仍須由你確認。</p></div>}{studentParentRequests.length > 0 && <div className="student-parent-requests">{studentParentRequests.map((request) => <article key={request.parent_id}><div><span className={`request-state ${request.status}`}>{request.status === "pending" ? "等待確認" : "已連結"}</span><strong>{request.display_name}</strong><small>{request.status === "pending" ? "希望查看你的學習成績及錯題" : "可以查看你的學習紀錄"}</small></div><div>{request.status === "pending" && <button className="approve-request" onClick={() => respondToParentRequest(request.parent_id, true)}>批准</button>}<button className="reject-request" onClick={() => respondToParentRequest(request.parent_id, false)}>{request.status === "pending" ? "拒絕" : "解除"}</button></div></article>)}</div>}{familyLinkMessage && <p className="family-link-message">{familyLinkMessage}</p>}</section>}
       <div className="subject-grid">{subjects.map(({ name, note, icon: Icon, colour }) => name === "數學" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openMaths}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : name === "中文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openChinese}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">查看課程</span></button> : name === "英文" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openEnglish}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">Start learning</span></button> : name === "人文科" ? <button className={`subject-card subject-button ${colour}`} key={name} onClick={openHumanities}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button> : <button className={`subject-card subject-button ${colour}`} key={name} onClick={openScience}><div className="subject-icon"><Icon size={25} /></div><div><h2>{name}</h2><p>{note}</p></div><span className="coming available">開始學習</span></button>)}</div>
       <aside className="progress-card"><div><span>你的年級</span><strong>{profile?.grade || "P5"}</strong></div><div><span>學習狀態</span><strong>準備開始</strong></div><div><span>今日目標</span><strong>完成 1 個練習</strong></div></aside>
       <footer className="site-footer"><button onClick={openFeedback}>問題回報／意見</button><button onClick={() => setView("privacy")}>私隱聲明</button></footer>
