@@ -235,6 +235,9 @@ export default function Home() {
   }, [questions]);
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("mode") === "recovery") {
+      setPasswordRecoveryMode(true);
+    }
     supabase.auth.getSession().then(({ data }) => { setSession(data.session); setLoading(false); });
     const { data } = supabase.auth.onAuthStateChange((event, nextSession) => {
       if (event === "PASSWORD_RECOVERY") setPasswordRecoveryMode(true);
@@ -246,7 +249,7 @@ export default function Home() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || passwordRecoveryMode) return;
     async function verifyAccess() {
       let deviceKey = window.localStorage.getItem("senplus_device_key");
       if (!deviceKey) {
@@ -267,7 +270,7 @@ export default function Home() {
       if (error) setMessage("未能讀取用戶資料，請聯絡管理員。"); else setProfile(data);
     }
     verifyAccess();
-  }, [session, supabase]);
+  }, [session, supabase, passwordRecoveryMode]);
 
   useEffect(() => {
     if (profile?.role === "parent") {
@@ -360,7 +363,7 @@ export default function Home() {
     }
     setResetRequestLoading(true);
     const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
-      redirectTo: window.location.origin,
+      redirectTo: `${window.location.origin}/?mode=recovery`,
     });
     if (error) {
       const detail = `${error.message || ""} ${(error as { code?: string }).code || ""}`.toLowerCase();
@@ -394,6 +397,7 @@ export default function Home() {
       setConfirmNewPassword("");
       setPasswordRecoveryMode(false);
       await supabase.auth.signOut();
+      window.history.replaceState({}, "", window.location.pathname);
       setMessage("密碼已更新，請使用新密碼登入。");
       setForgotPasswordMode(false);
       setAuthMode("login");
