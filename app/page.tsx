@@ -34,7 +34,10 @@ type ParentChild = { student_id: string; display_name: string; grade: string; at
 type ParentPending = { student_id: string; display_name: string; requested_at: string };
 type ParentRequest = { parent_id: string; display_name: string; status: "pending" | "approved"; requested_at: string; approved_at: string | null };
 type ParentError = { response_id: number; question_id: number; selected_answer: unknown; answered_at: string; node_code: string; title_zh: string; question_text: string; options: { id: string; text: string }[]; correct_answer: unknown; explanation: string | null; hint: string | null };
-type AppView = "subjects" | "parent" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "feedback" | "adminFeedback" | "privacy";
+type QualitySummary = { issue_type: string; issue_label: string; issue_count: number };
+type QualityIssue = { question_id: number; node_code: string; node_title: string; issue_type: string; issue_label: string; detail: string; question_text: string };
+type QualityReport = { success: boolean; checked_at: string; published_questions: number; questions_with_issues: number; total_issues: number; summary: QualitySummary[]; issues: QualityIssue[] };
+type AppView = "subjects" | "parent" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "quality" | "feedback" | "adminFeedback" | "privacy";
 type AuthMode = "login" | "register";
 type RegistrationRole = "student" | "parent";
 
@@ -143,6 +146,9 @@ export default function Home() {
   const [adminNodes, setAdminNodes] = useState<AdminNode[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminMessage, setAdminMessage] = useState("");
+  const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [qualityLoading, setQualityLoading] = useState(false);
+  const [qualityMessage, setQualityMessage] = useState("");
   const [managedStudents, setManagedStudents] = useState<ManagedStudent[]>([]);
   const [studentSearch, setStudentSearch] = useState("");
   const [studentsLoading, setStudentsLoading] = useState(false);
@@ -518,6 +524,20 @@ export default function Home() {
     const { data, error } = await supabase.rpc("admin_get_students");
     if (error) setStudentsMessage("未能載入學生帳戶，請稍後再試。"); else setManagedStudents((data || []) as ManagedStudent[]);
     setStudentsLoading(false);
+  }
+
+  async function openQuestionQualityAudit() {
+    if (profile?.role !== "admin") return;
+    setView("quality");
+    setQualityLoading(true);
+    setQualityMessage("");
+    const { data, error } = await supabase.rpc("admin_question_quality_report");
+    if (error || !data?.success) {
+      setQualityMessage("未能執行題庫檢查。請先在 Supabase 執行題庫品質檢查 SQL。");
+    } else {
+      setQualityReport(data as QualityReport);
+    }
+    setQualityLoading(false);
   }
 
   async function openStudentDetail(studentId: string, returnView: "admin" | "students") {
@@ -1125,6 +1145,36 @@ export default function Home() {
     </main>;
   }
 
+  if (view === "quality" && profile?.role === "admin") {
+    const issueCount = (type: string) => qualityReport?.summary.find((item) => item.issue_type === type)?.issue_count || 0;
+    const cleanRate = qualityReport?.published_questions ? Math.round((qualityReport.published_questions - qualityReport.questions_with_issues) / qualityReport.published_questions * 100) : 0;
+    return <main className="dashboard-page">
+      <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>題庫品質檢查</span></div></div><div className="account"><span>{profile.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
+      <section className="dashboard-wrap admin-wrap quality-wrap">
+        <button className="back-button" onClick={() => setView("admin")}><ArrowLeft size={18} />返回管理員儀表板</button>
+        <div className="admin-heading"><div><p className="eyebrow">自動品質審核</p><h1>題庫健康狀況</h1><p>掃描所有已發布題目，檢查重複題、答案、選項及香港貨幣符號。</p></div><div className="admin-heading-actions"><button onClick={openQuestionQualityAudit} disabled={qualityLoading}><RefreshCw size={17} />{qualityLoading ? "檢查中…" : "重新檢查"}</button></div></div>
+        {qualityMessage && <div className="unit-status error-message">{qualityMessage}</div>}
+        {qualityLoading && !qualityReport ? <div className="unit-status">正在掃描全部題目…</div> : qualityReport && <>
+          <div className="metric-grid quality-metrics">
+            <article><div className="metric-icon teal"><Search size={22} /></div><span>已檢查題目</span><strong>{qualityReport.published_questions}</strong><small>全部已發布題目</small></article>
+            <article><div className="metric-icon green"><CheckCircle2 size={22} /></div><span>題庫健康率</span><strong>{cleanRate}<b>%</b></strong><small>沒有發現指定問題</small></article>
+            <article><div className="metric-icon amber"><AlertTriangle size={22} /></div><span>受影響題目</span><strong>{qualityReport.questions_with_issues}</strong><small>可能同時有多項問題</small></article>
+            <article><div className="metric-icon purple"><ShieldCheck size={22} /></div><span>問題總數</span><strong>{qualityReport.total_issues}</strong><small>最近一次掃描結果</small></article>
+          </div>
+          <section className="quality-check-grid">
+            <article><span>重複題目</span><strong>{issueCount("duplicate_question")}</strong></article>
+            <article><span>答案缺失</span><strong>{issueCount("missing_answer")}</strong></article>
+            <article><span>選項數量／重複</span><strong>{issueCount("option_count") + issueCount("duplicate_options")}</strong></article>
+            <article><span>£ 貨幣符號</span><strong>{issueCount("currency_symbol")}</strong></article>
+          </section>
+          <section className="admin-panel quality-list-panel"><div className="panel-title"><div><p className="eyebrow">檢查結果</p><h2>{qualityReport.total_issues ? "需要處理的題目" : "沒有發現問題"}</h2></div><span>{qualityReport.total_issues}項</span></div>
+            {qualityReport.issues.length ? <div className="quality-issue-list">{qualityReport.issues.map((issue, index) => <article key={`${issue.question_id}-${issue.issue_type}-${index}`}><div><span className={`quality-issue-tag ${issue.issue_type}`}>{issue.issue_label}</span><b>{issue.node_code} {issue.node_title}</b><small>題目 ID：{issue.question_id}</small></div><p>{issue.question_text.slice(0, 260)}{issue.question_text.length > 260 ? "…" : ""}</p><strong>{issue.detail}</strong></article>)}</div> : <div className="quality-clean"><CheckCircle2 size={48} /><h3>題庫檢查通過</h3><p>沒有發現重複題、答案缺失、重複選項或 £ 貨幣符號。</p></div>}
+          </section>
+        </>}
+      </section>
+    </main>;
+  }
+
   if (view === "students" && profile?.role === "admin") {
     const query = studentSearch.trim().toLowerCase();
     const filteredStudents = managedStudents.filter((student) => !query || (student.display_name || "").toLowerCase().includes(query) || student.email.toLowerCase().includes(query));
@@ -1179,7 +1229,7 @@ export default function Home() {
       <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>管理員學習成績儀表板</span></div></div><div className="account"><span>{profile.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
       <section className="dashboard-wrap admin-wrap">
         <button className="back-button" onClick={() => setView("subjects")}><ArrowLeft size={18} />返回學習平台</button>
-        <div className="admin-heading"><div><p className="eyebrow">學習分析</p><h1>成績總覽</h1><p>查看學生完成情況、平均成績及各數學單位表現。</p></div><div className="admin-heading-actions"><button className="student-management-button" onClick={openStudentManagement}><UserCog size={17} />學生帳戶</button><button className="student-management-button" onClick={openAdminFeedback}><MessageSquareText size={17} />問題回報</button><button onClick={openAdminDashboard} disabled={adminLoading}>{adminLoading ? "更新中…" : "更新資料"}</button></div></div>
+        <div className="admin-heading"><div><p className="eyebrow">學習分析</p><h1>成績總覽</h1><p>查看學生完成情況、平均成績及各數學單位表現。</p></div><div className="admin-heading-actions"><button className="student-management-button" onClick={openStudentManagement}><UserCog size={17} />學生帳戶</button><button className="student-management-button" onClick={openQuestionQualityAudit}><ShieldCheck size={17} />題庫檢查</button><button className="student-management-button" onClick={openAdminFeedback}><MessageSquareText size={17} />問題回報</button><button onClick={openAdminDashboard} disabled={adminLoading}>{adminLoading ? "更新中…" : "更新資料"}</button></div></div>
         {adminMessage && <div className="unit-status error-message">{adminMessage}</div>}
         {adminLoading && !adminAttempts.length ? <div className="unit-status">正在整理學習紀錄…</div> : <>
           <div className="metric-grid">
