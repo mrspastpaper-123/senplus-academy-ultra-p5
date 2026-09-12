@@ -379,8 +379,18 @@ export default function Home() {
       },
     });
     if (error) {
-      const alreadyRegistered = /already|registered|exists/i.test(error.message);
-      setRegistrationMessage(alreadyRegistered ? "這個電郵已經註冊，請返回登入。" : "暫時未能建立帳戶，請檢查資料後再試。");
+      const detail = `${error.message || ""} ${(error as { code?: string }).code || ""}`.toLowerCase();
+      if (/already|registered|exists|user_already_exists/.test(detail)) {
+        setRegistrationMessage("這個電郵已經註冊，請返回登入或使用其他電郵。");
+      } else if (/invalid.*email|email.*invalid|email_address_invalid/.test(detail)) {
+        setRegistrationMessage("這個電郵地址無效。請使用可以接收確認信的真實電郵，不要使用 @test.com 或 @example.com。");
+      } else if (/rate|limit|too many|over_email_send_rate_limit/.test(detail)) {
+        setRegistrationMessage("短時間內嘗試次數太多，請稍候約一小時再試，或使用另一個真實電郵。");
+      } else if (/database|saving new user|unexpected_failure/.test(detail)) {
+        setRegistrationMessage("帳戶資料庫暫時未能建立個人檔案，請通知管理員執行註冊修正 SQL。");
+      } else {
+        setRegistrationMessage(`暫時未能建立帳戶：${error.message || "請檢查資料後再試。"}`);
+      }
     } else if (data.session) {
       setRegistrationSuccess(true);
       setRegistrationMessage("帳戶已建立，正在進入學習平台。");
