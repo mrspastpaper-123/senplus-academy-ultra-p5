@@ -141,3 +141,98 @@ button,.account button,.back-button,.submit-answer,.next-question,.quality-edit-
 .delete-student-message{margin:12px 0 0;padding:10px 12px;border-radius:10px;background:#fff0ed;color:#913e35;font-size:13px;font-weight:800}
 .delete-student-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}.delete-student-actions button{border-radius:11px;padding:11px 15px;font-weight:800;cursor:pointer}.delete-student-actions button:first-child{border:1px solid var(--line);background:#fff;color:var(--muted)}.delete-student-actions button:last-child{border:0;background:#ad332b;color:#fff;display:flex;align-items:center;gap:7px}.delete-student-actions button:disabled,.delete-student-heading>button:disabled{opacity:.45;cursor:not-allowed}
 @media(max-width:480px){.delete-student-modal{min-height:100dvh;border-radius:0;padding-bottom:calc(20px + env(safe-area-inset-bottom))}.delete-student-actions{flex-direction:column-reverse}.delete-student-actions button{justify-content:center;width:100%}}
+
+
+/* Twinko 全站學習小導師 */
+.twinko-guide {
+  position: fixed;
+  right: clamp(14px, 2.2vw, 32px);
+  bottom: clamp(12px, 2vw, 28px);
+  z-index: 24;
+  display: grid;
+  place-items: end center;
+  width: clamp(92px, 9vw, 132px);
+  pointer-events: none;
+  isolation: isolate;
+  animation: twinko-float 4.8s ease-in-out infinite;
+}
+
+.twinko-guide__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 12px 18px rgb(42 58 122 / 22%));
+  transform-origin: 50% 80%;
+}
+
+.twinko-guide__bubble {
+  position: absolute;
+  right: calc(100% - 12px);
+  bottom: 58%;
+  width: max-content;
+  max-width: 210px;
+  padding: 9px 13px;
+  border: 1px solid rgb(255 211 92 / 72%);
+  border-radius: 16px 16px 4px 16px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 8px 24px rgb(54 63 110 / 16%);
+  color: #554514;
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  backdrop-filter: blur(7px);
+}
+
+.twinko-guide__sparkle {
+  position: absolute;
+  z-index: -1;
+  color: #ffd85b;
+  line-height: 1;
+  text-shadow: 0 0 10px rgb(255 207 61 / 70%);
+  animation: twinko-sparkle 2.4s ease-in-out infinite;
+}
+
+.twinko-guide__sparkle--one {
+  top: 5%;
+  left: 3%;
+  font-size: 1.15rem;
+}
+
+.twinko-guide__sparkle--two {
+  right: 1%;
+  bottom: 22%;
+  font-size: 1rem;
+  animation-delay: 1.1s;
+}
+
+@keyframes twinko-float {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-8px) rotate(1deg); }
+}
+
+@keyframes twinko-sparkle {
+  0%, 100% { opacity: 0.35; transform: scale(0.75) rotate(0deg); }
+  50% { opacity: 1; transform: scale(1.16) rotate(20deg); }
+}
+
+@media (max-width: 900px) {
+  .twinko-guide {
+    right: 7px;
+    bottom: calc(7px + env(safe-area-inset-bottom));
+    width: 66px;
+    opacity: 0.88;
+  }
+
+  .twinko-guide__bubble,
+  .twinko-guide__sparkle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .twinko-guide,
+  .twinko-guide__sparkle {
+    animation: none;
+  }
+}
