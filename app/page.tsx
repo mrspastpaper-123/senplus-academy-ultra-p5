@@ -102,6 +102,66 @@ function renderMarkedText(value: string) {
   );
 }
 
+function getP5BarChart(text: string, unitCode: string) {
+  if (unitCode !== "5D1") return null;
+  const reading = text.match(/「閱讀」的棒柱代表\s*(\d+)\s*人/);
+  if (reading) {
+    const value = Number(reading[1]);
+    return { title: "最喜愛的課外活動", unit: "人", scale: 2, vertical: false, items: [
+      { label: "閱讀", value },
+      { label: "球類", value: Math.max(4, value - 4) },
+      { label: "繪畫", value: value + 6 },
+      { label: "音樂", value: Math.max(2, value - 8) },
+    ] };
+  }
+  const groups = text.match(/甲組有\s*(\d+)\s*人，乙組有\s*(\d+)\s*人/);
+  if (groups) return { title: "兩組人數", unit: "人", scale: 1, vertical: false, items: [{ label: "甲組", value: Number(groups[1]) }, { label: "乙組", value: Number(groups[2]) }] };
+  const scale = text.match(/每一小格代表\s*(\d+)\s*人。某棒柱高\s*(\d+)\s*小格/);
+  if (scale) return { title: "棒柱刻度判讀", unit: "人", scale: Number(scale[1]), vertical: true, items: [{ label: "題目棒柱", value: Number(scale[1]) * Number(scale[2]) }] };
+  const bottles = text.match(/甲班\s*(\d+)\s*個、乙班\s*(\d+)\s*個、丙班\s*(\d+)\s*個/);
+  if (bottles) return { title: "三班收集膠樽數量", unit: "個", scale: 1, vertical: false, items: ["甲班", "乙班", "丙班"].map((label, i) => ({ label, value: Number(bottles[i + 1]) })) };
+  return null;
+}
+
+
+function P5QuestionBarChart({ text, unitCode }: { text: string; unitCode: string }) {
+  const chart = getP5BarChart(text, unitCode);
+  if (!chart || chart.scale <= 0 || chart.items.some((item) => !Number.isFinite(item.value) || item.value < 0 || item.value > 1000)) return null;
+  const colours = ["#5688ce", "#d59a38", "#8a68bd", "#49a47a"];
+  const largest = Math.max(...chart.items.map((item) => item.value));
+  const cells = chart.vertical ? Math.max(5, Math.ceil(largest / chart.scale) + 1) : Math.ceil(largest / (chart.scale * 5)) * 5;
+  const axisMax = cells * chart.scale;
+  const labelEvery = chart.vertical ? 1 : 5;
+  return <figure className="p5-question-chart">
+    <figcaption>{chart.title}<span>每小格代表 {chart.scale} {chart.unit}</span></figcaption>
+    {chart.vertical ? <svg viewBox="0 0 340 188" role="img" aria-label={`${chart.title}；縱軸單位：${chart.unit}`}>
+      <text x="8" y="13">人數</text>
+      {Array.from({ length: cells + 1 }, (_, i) => {
+        const y = 154 - i / cells * 132;
+        return <g key={i}><line x1="44" x2="322" y1={y} y2={y} stroke="#dce2ee" /><text x="36" y={y + 4} textAnchor="end">{i * chart.scale}</text></g>;
+      })}
+      <line x1="44" x2="44" y1="22" y2="154" stroke="#67738b" strokeWidth="1.5" />
+      <line x1="44" x2="322" y1="154" y2="154" stroke="#67738b" strokeWidth="1.5" />
+      <rect x="145" y={154 - largest / axisMax * 132} width="76" height={largest / axisMax * 132} rx="3" fill={colours[0]} />
+      {Array.from({ length: Math.max(0, Math.round(largest / chart.scale) - 1) }, (_, i) => <line key={i} x1="145" x2="221" y1={154 - (i + 1) / cells * 132} y2={154 - (i + 1) / cells * 132} stroke="#fff" strokeOpacity=".7" />)}
+      <text x="183" y="177" textAnchor="middle">題目棒柱</text>
+    </svg> : <svg viewBox="0 0 360 200" role="img" aria-label={`${chart.title}；類別：${chart.items.map((item) => item.label).join("、")}；單位：${chart.unit}`}>
+      {Array.from({ length: cells + 1 }, (_, i) => {
+        const x = 58 + i / cells * 280;
+        return <g key={i}><line x1={x} x2={x} y1="20" y2="156" stroke={i % labelEvery ? "#edf0f6" : "#ced6e5"} />{i % labelEvery === 0 && <text x={x} y="175" textAnchor="middle">{i * chart.scale}</text>}</g>;
+      })}
+      {chart.items.map((item, i) => {
+        const row = 136 / chart.items.length;
+        const y = 20 + (i + .5) * row;
+        return <g key={item.label}><text x="50" y={y + 4} textAnchor="end">{item.label}</text><rect x="58" y={y - row * .28} width={item.value / axisMax * 280} height={row * .56} rx="3" fill={colours[i]} /></g>;
+      })}
+      <line x1="58" x2="58" y1="20" y2="156" stroke="#67738b" strokeWidth="1.5" />
+      <line x1="58" x2="338" y1="156" y2="156" stroke="#67738b" strokeWidth="1.5" />
+      <text x="338" y="195" textAnchor="end">數量（{chart.unit}）</text>
+    </svg>}
+  </figure>;
+}
+
 function TwinkoGuide({ view, answerCorrect }: { view: string; answerCorrect: boolean | null }) {
   const subjectViews = ["maths", "english", "chinese", "humanities", "science", "generalStudies"];
   const quietViews = ["parent", "admin", "adminFeedback", "studentErrors", "studentDetail", "quality", "students", "feedback", "privacy", "status"];
@@ -1604,7 +1664,7 @@ export default function Home() {
         <div className="writing-guidance"><strong>寫作提示</strong><div>{writingPrompt.guidance.map((item) => <span key={item}>{item}</span>)}</div></div>
         {!writingResult ? <><textarea className="writing-editor" value={writingContent} onChange={(event) => setWritingContent(event.target.value)} placeholder="在這裏輸入作文……&#10;&#10;建議按內容分段，完成後再檢查錯別字和標點。" rows={18} disabled={practiceLoading} /><div className="writing-actions"><span>{writingCharCount < 50 ? `最少還需 ${50 - writingCharCount} 字才可提交` : "可以提交；系統會儲存全文並按四項準則評改。"}</span><button className="submit-answer" disabled={writingCharCount < 50 || practiceLoading} onClick={submitWritingTask}>{practiceLoading ? "正在儲存及評改…" : "提交作文"}</button></div></> : <div className="writing-result"><div className="writing-score"><span>自動評改</span><strong>{writingResult.score}<small>／100</small></strong><p>{writingResult.char_count} 字 · 作文已儲存</p></div><div className="writing-rubric">{Object.entries(writingResult.rubric).map(([name, score]) => <div key={name}><span>{name}</span><strong>{score}</strong></div>)}</div><div className="writing-feedback"><Lightbulb size={20} /><div><strong>改善建議</strong><p>{writingResult.feedback}</p><small>這是按篇幅、段落、標點和題目重點作出的初步評估；老師評語及分數會以人工評閱為準。</small></div></div><button className="retry-button" onClick={() => startWritingTask(activeUnit!)}><RotateCcw size={18} />抽選另一題</button></div>}
       </section>}
-      {!isReadingUnit && !isWritingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{renderMarkedText(stripQuestionMetadata(currentQuestion.question_text))}</h2><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{renderMarkedText(option.text)}</span></label>)}</div>
+      {!isReadingUnit && !isWritingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{renderMarkedText(stripQuestionMetadata(currentQuestion.question_text))}</h2><P5QuestionBarChart text={currentQuestion.question_text} unitCode={activeUnit?.code || ""} /><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{renderMarkedText(option.text)}</span></label>)}</div>
         {!feedback && <button className="submit-answer" disabled={!selectedAnswer || practiceLoading} onClick={submitAnswer}>{practiceLoading ? "批改中…" : "提交答案"}</button>}
         {feedback && <div className={`feedback ${feedback.is_correct ? "correct" : "incorrect"}`}><h3>{feedback.is_correct ? "答對了！" : "答案不正確"}</h3><p>正確答案：{displayedOptions.find((option) => option.id === feedback.correct_answer)?.label} · {renderMarkedText(displayedOptions.find((option) => option.id === feedback.correct_answer)?.text || "")}</p>{feedback.explanation && <p>{renderMarkedText(feedback.explanation)}</p>}{feedback.completed ? <div className="final-score"><span>完成10題</span><strong>{feedback.correct_count}／{feedback.total_questions} 題答對</strong><b>{feedback.score ?? 0} 分</b></div> : <button className="next-question" onClick={nextQuestion}>下一題</button>}</div>}
       </section>}
