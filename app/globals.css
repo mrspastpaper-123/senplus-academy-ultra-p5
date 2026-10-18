@@ -1688,3 +1688,21 @@ button,.account button,.back-button,.submit-answer,.next-question,.quality-edit-
 .student-home-v2,.learning-flow-v2{background:radial-gradient(circle at 8% 10%,#dff1eb,transparent 30%),#f7f4ec}
 .student-home-v2 .student-home-hero,.login-page-v2 .login-intro{background:linear-gradient(145deg,#eaf5ef,#f7f4ec 60%,#dff1eb)}
 .login-page-v2{background:#f7f4ec}
+
+/* 5D1: charts follow the explicit quantities and scale in each question. */
+.p5-question-chart{margin:0;border:1px solid #e2e6f1;border-radius:16px;padding:10px 12px;background:#fbfcff;min-width:0}
+.p5-question-chart figcaption{display:flex;justify-content:space-between;gap:8px;align-items:center;color:#485577;font-size:12px;font-weight:800}
+.p5-question-chart figcaption>span{font-size:10px;font-weight:600;white-space:nowrap}
+.p5-question-chart svg{display:block;width:100%;height:164px;overflow:visible}
+.p5-question-chart svg text{font-family:Arial,"Noto Sans TC",sans-serif;font-size:14px;fill:#485577}
+@media(min-width:901px){
+  .practice-flow-v2 .question-card:has(.p5-question-chart){display:grid;grid-template-columns:minmax(290px,1.1fr) minmax(0,.9fr);gap:0 20px;align-items:start}
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.practice-progress,
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.question-meta,
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>h2{grid-column:1/-1}
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.p5-question-chart{grid-column:1;grid-row:4/6}
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.option-list{grid-column:2;grid-row:4;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.submit-answer{grid-column:2;grid-row:5;align-self:end}
+  .practice-flow-v2 .question-card:has(.p5-question-chart)>.feedback{grid-column:2;grid-row:5;margin-top:10px}
+}
+@media(max-width:900px){.p5-question-chart{margin:0 0 16px}}
