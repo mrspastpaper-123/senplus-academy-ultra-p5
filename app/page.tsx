@@ -1,4 +1,5 @@
 "use client";
+import { refineFertilisationOptions } from "./science-option-refinement";
 import { QuestionTopicCard } from "./question-topic-card";
 import { cleanLearningText } from "./learning-text";
 
@@ -69,7 +70,7 @@ function answerValue(value: unknown) {
 
 function parentAnswerText(error: ParentError, value: unknown) {
   const id = answerValue(value);
-  return cleanLearningText(error.options?.find((option) => option.id === id)?.text || id);
+  return cleanLearningText(refineFertilisationOptions(error.question_text, error.options || []).find((option) => option.id === id)?.text || id);
 }
 
 function localiseCurrency(value: string) {
@@ -84,7 +85,7 @@ function localiseQuestion<T extends PracticeQuestion>(question: T): T {
   return {
     ...question,
     question_text: localiseCurrency(question.question_text),
-    options: question.options.map((option) => ({ ...option, text: localiseCurrency(option.text) })),
+    options: refineFertilisationOptions(question.question_text, question.options).map((option) => ({ ...option, text: localiseCurrency(option.text) })),
   };
 }
 
