@@ -1,4 +1,5 @@
 "use client";
+import AdminPaperGenerator from "./admin-paper-generator";
 import AdminPracticeHistory from "./admin-practice-history";
 import StudentLearningProgress from "./student-learning-progress";
 import { QuestionTopicCard } from "./question-topic-card";
@@ -73,7 +74,7 @@ type StudentHomeStats = {
   lastUnitTitle: string | null;
   subjectCompleted: Record<string, number>;
 };
-type AppView = "progress" | "subjects" | "parent" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "quality" | "feedback" | "adminFeedback" | "privacy";
+type AppView = "paperGenerator" | "progress" | "subjects" | "parent" | "chinese" | "english" | "maths" | "humanities" | "science" | "practice" | "complete" | "admin" | "students" | "studentDetail" | "studentErrors" | "quality" | "feedback" | "adminFeedback" | "privacy";
 type AuthMode = "login" | "register";
 type RegistrationRole = "student" | "parent";
 
@@ -1579,7 +1580,7 @@ export default function Home() {
       <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>題庫品質檢查</span></div></div><div className="account"><span>{profile.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
       <section className="dashboard-wrap admin-wrap quality-wrap">
         <button className="back-button" onClick={() => setView("admin")}><ArrowLeft size={18} />返回管理員儀表板</button>
-        <div className="admin-heading"><div><p className="eyebrow">自動品質審核</p><h1>題庫健康狀況</h1><p>掃描所有題目，檢查重複題、答案、四個選項及香港貨幣符號。</p></div><div className="admin-heading-actions"><button onClick={openQuestionQualityAudit} disabled={qualityLoading}><RefreshCw size={17} />{qualityLoading ? "檢查中…" : "執行品質檢查"}</button></div></div>
+        <div className="admin-heading"><div><p className="eyebrow">自動品質審核</p><h1>題庫健康狀況</h1><p>掃描所有題目，檢查重複題、答案、四個選項及香港貨幣符號。</p></div><div className="admin-heading-actions"><button className="student-management-button" onClick={() => setView("paperGenerator")}><Pencil size={17} />試卷生成器（測試）</button><button onClick={openQuestionQualityAudit} disabled={qualityLoading}><RefreshCw size={17} />{qualityLoading ? "檢查中…" : "執行品質檢查"}</button></div></div>
         {qualityMessage && <div className="unit-status error-message">{qualityMessage}</div>}
         {qualitySaveMessage && <div className="quality-save-notice">{qualitySaveMessage}</div>}
         {qualityLoading && !qualityHasRun ? <div className="unit-status">正在掃描全部題目…</div> : qualityHasRun && <>
@@ -1649,6 +1650,8 @@ export default function Home() {
       </section>
     </main>;
   }
+
+  if (view === "paperGenerator" && profile?.role === "admin" && profile.login_allowed) return <AdminPaperGenerator supabase={supabase} onBack={openAdminDashboard} onSignOut={signOut} />;
 
   if (view === "admin" && profile?.role === "admin") {
     const completed = adminAttempts.filter((attempt) => attempt.status === "completed");
@@ -1906,5 +1909,6 @@ export default function Home() {
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
   </main>;
 }
+
 
 

@@ -40,3 +40,10 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# Private examination payloads must never be published.
+lib/papers/bank.json
+**/*Private-Papers-Setup.sql
+private-bank.json
+.paper-tests/
+
