@@ -1,15 +1,18 @@
+import {validateChineseQuestions,validateChineseNames,type ChineseQuestion,type ProperName} from './chinese-custom';
 import {AccessError} from './admin-auth';
 import {BankSetupError} from './private-bank';
 type Text={x:number;y:number;width:number;size:number;bold:boolean;text:string};
 type Line={x1:number;y1:number;x2:number;y2:number;width:number};
 type Page={texts:Text[];lines:Line[]};
-export type ChinesePaper={schemaVersion:1;subject:'chinese';marks:100;minutes:60;responses:49;fonts?:{regular:string;bold:string};studentPages:Page[];answerPages:Page[]};
+export type ChinesePaper={schemaVersion:1;subject:'chinese';marks:100;minutes:60;responses:49;questions?:ChineseQuestion[];properNames?:ProperName[];fonts?:{regular:string;bold:string};studentPages:Page[];answerPages:Page[]};
 const numeric=(v:unknown,max:number)=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=max;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 export function validateChinesePaper(v:unknown):ChinesePaper{
  const fail=():never=>{throw new BankSetupError('中文示範卷資料格式不正確，請聯絡管理員。');};
  if(!object(v)||v.schemaVersion!==1||v.subject!=='chinese'||v.marks!==100||v.minutes!==60||v.responses!==49)return fail();
  if(v.fonts!==undefined&&(!object(v.fonts)||['regular','bold'].some(k=>typeof (v.fonts as Record<string,unknown>)[k]!=='string'||! /^[A-Za-z0-9+/=]{1,400000}$/.test(String((v.fonts as Record<string,unknown>)[k])))))return fail();
+ if(v.questions!==undefined&&!validateChineseQuestions(v.questions))return fail();
+ if(v.properNames!==undefined&&!validateChineseNames(v.properNames))return fail();
  for(const [key,count]of [['studentPages',8],['answerPages',4]]as const){const pages=v[key];if(!Array.isArray(pages)||pages.length!==count)return fail();for(const page of pages){
   if(!object(page)||!Array.isArray(page.texts)||!page.texts.length||page.texts.length>500||!Array.isArray(page.lines)||page.lines.length>500)return fail();
   for(const t of page.texts)if(!object(t)||!numeric(t.x,596)||!numeric(t.y,843)||!numeric(t.width,596)||!numeric(t.size,30)||typeof t.bold!=='boolean'||typeof t.text!=='string'||t.text.length>2000)return fail();
