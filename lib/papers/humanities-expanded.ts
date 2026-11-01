@@ -41,25 +41,31 @@ export async function loadExpandedHumanitiesBank(request:Request,fetcher:typeof 
 export const validateExpandedOptions=validateCustomMixedOptions;
 export function expandedHumanitiesInventory(b:ExpandedHumanitiesBank){return{units:b.units.map(u=>{const groups=b.groups.filter(g=>g.unit===u.code);return{...u,count:groups.reduce((n,g)=>n+(g.kind==='analysis'?1:g.questions.length),0),responses:groups.reduce((n,g)=>n+g.questions.length,0),marks:groups.reduce((n,g)=>n+g.questions.reduce((a,q)=>a+q.marks,0),0)};}),types:MIXED_TYPES,responses:b.groups.reduce((n,g)=>n+g.questions.length,0),typeCounts:Object.fromEntries(kinds.map(k=>[k,b.groups.filter(g=>g.kind===k).reduce((n,g)=>n+g.questions.length,0)])),maxMarks:100};}
 function shuffle<T>(input:T[],seed:number){const a=[...input];for(let i=a.length-1;i>0;i--){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const j=Math.floor(seed/4294967296*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+const wordKey=(word:string)=>word.replace(/\u0332/g,'').normalize('NFC').trim();
 const instructions:Record<Kind,string>={choice:'每題選出一個正確答案，並在該選項前的方格內加上 ☑。',fill:'從本組詞語框選出適當詞語，填在橫線上。每個詞語只可用一次，有些詞語多餘。',match:'把本組合適說明前的英文字母，填在各題括號內。每個字母只可用一次，有些說明多餘。',analysis:'細閱本組資料，回答以下各題。',short:'按題目要求作答，提出合理做法並說明原因。'};
 export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumanitiesBank):HumanitiesMixedPaper{
  if(o.units.some(u=>!b.units.some(x=>x.code===u)))throw new PaperInputError('所選單元未有混合題目，請重新選擇範圍。');
- const entries=shuffle(b.groups.filter(g=>o.units.includes(g.unit)&&o.types.includes(g.kind)),o.seed).flatMap(group=>group.kind==='analysis'?[{group,questions:group.questions,marks:group.questions.reduce((n,q)=>n+q.marks,0)}]:group.questions.map(q=>({group,questions:[q],marks:q.marks}))); 
+ const rawEntries=shuffle(b.groups.filter(g=>o.units.includes(g.unit)&&o.types.includes(g.kind)),o.seed).flatMap(group=>group.kind==='analysis'?[{group,questions:group.questions,marks:group.questions.reduce((n,q)=>n+q.marks,0)}]:group.questions.map(q=>({group,questions:[q],marks:q.marks}))); 
+ // Matching letters are used once: equivalent descriptions cannot be selected
+ // as different answers when combining contexts into one shared option box.
+ const matchingAnswers=new Set<string>();
+ const entries=rawEntries.filter(e=>{if(e.group.kind!=='match')return true;const key=wordKey(e.questions[0].answer.slice(2));if(matchingAnswers.has(key))return false;matchingAnswers.add(key);return true;});
  // Solve each type separately, then combine exact scores. State size is bounded by
  // score x 3, rather than score x 3^types for every question in the whole bank.
  type Path={indices:number[];count:number};
  let combined=new Map<number,Path>([[0,{indices:[],count:0}]]);
  for(const kind of kinds.filter(k=>o.types.includes(k))){
   const pool=entries.map((e,i)=>({e,i})).filter(x=>x.e.group.kind===kind);
+  if(kind==='match'&&pool.length<5)throw new PaperInputError('所選單元不足 5 題不同答案的配對題。配對題須有 5–6 題，請增加單元或取消配對題。');
   if(!pool.length)throw new PaperInputError('所選單元暫無「'+MIXED_TYPES[kind]+'」，請調整範圍。');
   const states=new Map<string,Path>([['0:0',{indices:[],count:0}]]);
-  for(const {e,i} of pool)for(const [key,p] of [...states]){const score=Number(key.split(':')[0])+e.marks;if(score>o.total)continue;const count=Math.min(2,p.count+e.questions.length),next=score+':'+count;if(!states.has(next))states.set(next,{indices:[...p.indices,i],count});}
+  for(const {e,i} of pool)for(const [key,p] of [...states]){const score=Number(key.split(':')[0])+e.marks;if(score>o.total)continue;const count=kind==='match'?p.count+e.questions.length:Math.min(2,p.count+e.questions.length);if(kind==='match'&&count>6)continue;const next=score+':'+count;if(!states.has(next))states.set(next,{indices:[...p.indices,i],count});}
   const next=new Map<number,Path>();
-  for(const [score,p] of combined)for(const [key,q] of states){const [add,count]=key.split(':').map(Number),sum=score+add;if(!count||sum>o.total)continue;const quality=p.count+(count===2?100000:0)-(add-o.total/o.types.length)**2,previous=next.get(sum);if(!previous||quality>previous.count)next.set(sum,{indices:[...p.indices,...q.indices],count:quality});}
+  for(const [score,p] of combined)for(const [key,q] of states){const [add,count]=key.split(':').map(Number),sum=score+add;if(!count||sum>o.total||kind==='match'&&count<5)continue;const quality=p.count+(kind==='match'||count===2?100000:0)-(add-o.total/o.types.length)**2,previous=next.get(sum);if(!previous||quality>previous.count)next.set(sum,{indices:[...p.indices,...q.indices],count:quality});}
   combined=next;
  }
  const path=combined.get(o.total);
- if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；資料分析題組會完整抽取。');
+ if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；配對題須有 5–6 題，資料分析題組會完整抽取。');
  const selected=path.indices.map(i=>entries[i]),sections:Section[]=[],active=kinds.filter(k=>o.types.includes(k));
  let sectionOffset=0;
  for(const kind of active){
@@ -70,10 +76,19 @@ export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumaniti
    const questions=groups.flatMap(group=>shuffle(selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions),o.seed^sectionOffset++));
    // A shared word box must not list the same term twice, including terms with
    // different proper-name underline markup. Reuse is permitted when required.
-   const key=(word:string)=>word.replace(/\u0332/g,'').normalize('NFC').trim();
+   const key=wordKey;
    const unique=new Map<string,string>();for(const group of groups)for(const word of group.words||[])if(!unique.has(key(word)))unique.set(key(word),word);
    const repeated=new Set(questions.map(q=>key(q.answer))).size<questions.length;
    sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:'從詞語框選出適當詞語，填在橫線上。'+(repeated?'詞語可按需要重複使用':'每個詞語只可用一次')+'，有些詞語多餘。',startNumber:0,questions,words:shuffle([...unique.values()],o.seed^0x574f5244)});continue;
+  }
+  if(kind==='match'){
+   const chosen=selected.filter(e=>e.group.kind==='match'),groups=b.groups.filter(g=>g.kind==='match'&&chosen.some(e=>e.group.id===g.id));
+   sectionOffset+=groups.length;
+   const questions=shuffle(chosen.flatMap(e=>e.questions),o.seed^0x4d415443),correct=new Map<string,string>();
+   for(const q of questions){const description=q.answer.slice(2);correct.set(wordKey(description),description);}
+   const extra=new Map<string,string>();for(const group of groups)for(const word of group.words||[])if(!correct.has(wordKey(word))&&!extra.has(wordKey(word)))extra.set(wordKey(word),word);
+   const distractors=shuffle([...extra.values()],o.seed^0x44495354).slice(0,2),words=shuffle([...correct.values(),...distractors],o.seed^0x4c455454);
+   sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:'把合適說明前的英文字母，填在各題括號內。每個字母只可用一次'+(distractors.length?'，有些說明多餘。':'。'),startNumber:0,words,questions:questions.map(q=>{const index=words.findIndex(w=>wordKey(w)===wordKey(q.answer.slice(2))),letter=String.fromCharCode(65+index);return{...q,correct:letter,answer:letter+'．'+words[index]};})});continue;
   }
   let startNumber=0;for(const group of b.groups.filter(g=>g.kind===kind)){
    const questions=selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions);if(!questions.length)continue;
