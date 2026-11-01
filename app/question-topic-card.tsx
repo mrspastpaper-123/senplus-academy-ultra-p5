@@ -1,5 +1,6 @@
 import { getTopicCard, type TopicCardData } from "./question-topic-card-data";
 const specificPictures = {
+"irreversible": <><rect x="49" y="61" width="31" height="42" rx="5" fill="#c6e1d8"/><path d="M92 82H153M138 67L153 82L138 97"/><path d="M171 64L191 76L185 104L164 97Z" fill="#eed5b2"/></>,
 "digestive": <><path d="M115 28V59Q117 74 136 65Q166 57 167 90Q166 118 139 120Q112 122 107 101Q101 78 83 83Q68 86 76 104M78 133H157" /></>,
 "cells": <><circle cx="97" cy="80" r="34" fill="#d3e6c4"/><circle cx="97" cy="80" r="10"/><circle cx="161" cy="85" r="16" fill="#b3d9e4"/></>,
 "female": <><circle cx="120" cy="63" r="32" fill="#d5e7ec"/><path d="M120 95V137M104 120H136"/></>,

@@ -30,7 +30,7 @@ export const scienceTopicIcons: Record<string, string> = {
   "空氣有重量": "scale",
   "空氣的成分": "molecules",
   "風的形成": "wind",
-  "不可逆轉的變化": "change",
+  "不可逆轉的變化": "irreversible",
   "可逆轉的變化": "change",
   "公平測試": "flask",
   "公平和可靠的測試": "flask",
