@@ -1,0 +1,7 @@
+.card { margin: 20px 0; padding: 16px; border: 1px solid #d6e4e3; border-radius: 18px; background: #f5faf9; max-width: 100%; }
+.table { width: 100%; table-layout: fixed; border-collapse: collapse; color: #263d4e; font-size: clamp(15px, 1.4vw, 19px); line-height: 1.65; }
+.table caption { text-align: left; font-size: 1.05em; font-weight: 800; padding-bottom: 12px; color: #1d6b63; }
+.table th, .table td { border: 1px solid #d6e4e3; padding: 10px 12px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.table thead { background: #e6f1ee; }
+.table tbody th { font-weight: 700; background: #edf5f2; }
+@media (max-width: 560px) { .card { padding: 10px; margin: 16px 0; border-radius: 14px; } .table th, .table td { padding: 8px 7px; } }

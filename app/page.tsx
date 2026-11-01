@@ -4,6 +4,8 @@ import AdminPracticeHistory from "./admin-practice-history";
 import StudentLearningProgress from "./student-learning-progress";
 import { QuestionTopicCard } from "./question-topic-card";
 import { cleanLearningText } from "./learning-text";
+import { ScienceRecordCard } from "./science-record";
+import { scienceQuestionPrompt } from "./science-record-data";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, Session } from "@supabase/supabase-js";
@@ -1161,7 +1163,7 @@ export default function Home() {
       setScienceUnitsMessage("未能載入科學科單元，請稍後再試。");
     } else {
       const domainMap = new Map(domains.map((domain) => [domain.id, { title_zh: domain.name_zh, code: domain.code }]));
-      setScienceUnits((data || []).filter((unit) => /^5SC[1-7]$/.test(unit.code)).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
+      setScienceUnits((data || []).filter((unit) => /^5SC[1-9]\d*$/.test(unit.code)).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
     }
     setScienceUnitsLoading(false);
   }
@@ -1727,7 +1729,7 @@ export default function Home() {
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap practice-wrap">
       <button className="back-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回{activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}單位</button>
-      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}{activeSubject !== "humanities" && <> · {activeUnit?.curriculum_domains?.title_zh}</>}</p><h1>{activeUnit?.title_zh}</h1></div>
+      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}{activeSubject !== "humanities" && activeSubject !== "science" && <> · {activeUnit?.curriculum_domains?.title_zh}</>}</p><h1>{activeUnit?.title_zh}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {isReadingUnit && questions.length > 0 && <section className="reading-paper">
@@ -1748,7 +1750,7 @@ export default function Home() {
         <div className="writing-guidance"><strong>寫作提示</strong><div>{writingPrompt.guidance.map((item) => <span key={item}>{item}</span>)}</div></div>
         {!writingResult ? <><textarea className="writing-editor" value={writingContent} onChange={(event) => setWritingContent(event.target.value)} placeholder="在這裏輸入作文……&#10;&#10;建議按內容分段，完成後再檢查錯別字和標點。" rows={18} disabled={practiceLoading} /><div className="writing-actions"><span>{writingCharCount < 50 ? `最少還需 ${50 - writingCharCount} 字才可提交` : "可以提交；系統會儲存全文並按四項準則評改。"}</span><button className="submit-answer" disabled={writingCharCount < 50 || practiceLoading} onClick={submitWritingTask}>{practiceLoading ? "正在儲存及評改…" : "提交作文"}</button></div></> : <div className="writing-result"><div className="writing-score"><span>自動評改</span><strong>{writingResult.score}<small>／100</small></strong><p>{writingResult.char_count} 字 · 作文已儲存</p></div><div className="writing-rubric">{Object.entries(writingResult.rubric).map(([name, score]) => <div key={name}><span>{name}</span><strong>{score}</strong></div>)}</div><div className="writing-feedback"><Lightbulb size={20} /><div><strong>改善建議</strong><p>{writingResult.feedback}</p><small>這是按篇幅、段落、標點和題目重點作出的初步評估；老師評語及分數會以人工評閱為準。</small></div></div><button className="retry-button" onClick={() => startWritingTask(activeUnit!)}><RotateCcw size={18} />抽選另一題</button></div>}
       </section>}
-      {!isReadingUnit && !isWritingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{renderMarkedText(stripQuestionMetadata(currentQuestion.question_text))}</h2><QuestionTopicCard text={currentQuestion.question_text} /><P5QuestionBarChart text={currentQuestion.question_text} unitCode={activeUnit?.code || ""} /><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{renderMarkedText(option.text)}</span></label>)}</div>
+      {!isReadingUnit && !isWritingUnit && currentQuestion && <section className="question-card"><div className="practice-progress"><span style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }} /></div><div className="question-meta"><span>第 {currentIndex + 1} 題／共 {questions.length} 題</span><span>四選一</span></div><h2>{renderMarkedText(stripQuestionMetadata(scienceQuestionPrompt(currentQuestion.question_text, activeUnit?.code || "")))}</h2><ScienceRecordCard text={currentQuestion.question_text} unitCode={activeUnit?.code || ""} /><QuestionTopicCard text={currentQuestion.question_text} /><P5QuestionBarChart text={currentQuestion.question_text} unitCode={activeUnit?.code || ""} /><div className="option-list">{displayedOptions.map((option) => <label className={`option ${selectedAnswer === option.id ? "selected" : ""} ${feedback ? "locked" : ""}`} key={option.id}><input type="radio" name="answer" value={option.id} checked={selectedAnswer === option.id} disabled={!!feedback} onChange={() => setSelectedAnswer(option.id)} /><strong>{option.label}</strong><span>{renderMarkedText(option.text)}</span></label>)}</div>
         {!feedback && <button className="submit-answer" disabled={!selectedAnswer || practiceLoading} onClick={submitAnswer}>{practiceLoading ? "批改中…" : "提交答案"}</button>}
         {feedback && <div className={`feedback ${feedback.is_correct ? "correct" : "incorrect"}`}><h3>{feedback.is_correct ? "答對了！" : "答案不正確"}</h3><p>正確答案：{displayedOptions.find((option) => option.id === feedback.correct_answer)?.label} · {renderMarkedText(displayedOptions.find((option) => option.id === feedback.correct_answer)?.text || "")}</p>{feedback.explanation && <p>{renderMarkedText(feedback.explanation)}</p>}<button className="next-question" onClick={nextQuestion}>{feedback.completed ? "查看成績" : "下一題"}</button></div>}
       </section>}
@@ -1812,9 +1814,9 @@ export default function Home() {
     <section className="dashboard-wrap units-wrap science-units">
       <button className="back-button" onClick={() => setView("subjects")}><ArrowLeft size={18} />返回科目</button>
       <div className="units-heading"><div className="subject-icon green"><Microscope size={25} /></div><div><p className="eyebrow">P5 科學科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供科學解析並記錄錯題。</p></div></div>
-      {scienceUnitsLoading && <div className="unit-status">正在載入7個科學科單元…</div>}
+      {scienceUnitsLoading && <div className="unit-status">正在載入科學科單元…</div>}
       {scienceUnitsMessage && <div className="unit-status error-message">{scienceUnitsMessage}</div>}
-      {!scienceUnitsLoading && !scienceUnitsMessage && <div className="unit-grid">{scienceUnits.map((unit) => <button className="unit-card science-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "science")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "科學科"}</span><span>開始練習</span></div></button>)}</div>}
+      {!scienceUnitsLoading && !scienceUnitsMessage && <div className="unit-grid">{scienceUnits.slice().sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3))).map((unit) => <button className="unit-card science-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "science")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>科學科</span><span>開始練習</span></div></button>)}</div>}
       {!scienceUnitsLoading && !scienceUnitsMessage && scienceUnits.length === 0 && <div className="unit-status">目前尚未建立科學科單元。</div>}
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
@@ -1909,6 +1911,3 @@ export default function Home() {
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
   </main>;
 }
-
-
-
