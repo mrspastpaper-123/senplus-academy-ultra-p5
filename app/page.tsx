@@ -4,7 +4,6 @@ import AdminPracticeHistory from "./admin-practice-history";
 import StudentLearningProgress from "./student-learning-progress";
 import { QuestionTopicCard } from "./question-topic-card";
 import { cleanLearningText } from "./learning-text";
-import { groupHumanitiesUnits } from "./humanities-units";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, Session } from "@supabase/supabase-js";
@@ -1728,7 +1727,7 @@ export default function Home() {
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap practice-wrap">
       <button className="back-button" onClick={() => setView(activeSubject)}><ArrowLeft size={18} />返回{activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}單位</button>
-      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"} · {activeUnit?.curriculum_domains?.title_zh}</p><h1>{activeUnit?.title_zh}</h1></div>
+      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}{activeSubject !== "humanities" && <> · {activeUnit?.curriculum_domains?.title_zh}</>}</p><h1>{activeUnit?.title_zh}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {isReadingUnit && questions.length > 0 && <section className="reading-paper">
@@ -1802,7 +1801,7 @@ export default function Home() {
       <div className="units-heading"><div className="subject-icon amber"><Sparkles size={25} /></div><div><p className="eyebrow">P5 人文科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供解析並記錄錯題。</p></div></div>
       {humanitiesUnitsLoading && <div className="unit-status">正在載入人文科單元…</div>}
       {humanitiesUnitsMessage && <div className="unit-status error-message">{humanitiesUnitsMessage}</div>}
-      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && groupHumanitiesUnits(humanitiesUnits).map((group) => <section key={group.code} aria-label={group.title}><h2 style={{ margin: "28px 0 16px" }}>{group.title}</h2><div className="unit-grid">{group.units.map((unit) => <button className="unit-card humanities-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "humanities")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{group.title}</span><span>開始練習</span></div></button>)}</div></section>)}
+      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && <div className="unit-grid">{humanitiesUnits.filter((unit) => /^5H[1-9]\d*$/.test(unit.code)).sort((a, b) => Number(a.code.slice(2)) - Number(b.code.slice(2))).map((unit) => <button className="unit-card humanities-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "humanities")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>人文科</span><span>開始練習</span></div></button>)}</div>}
       {!humanitiesUnitsLoading && !humanitiesUnitsMessage && humanitiesUnits.length === 0 && <div className="unit-status">目前尚未建立人文科單元。</div>}
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
