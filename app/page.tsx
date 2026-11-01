@@ -4,6 +4,7 @@ import AdminPracticeHistory from "./admin-practice-history";
 import StudentLearningProgress from "./student-learning-progress";
 import { QuestionTopicCard } from "./question-topic-card";
 import { cleanLearningText } from "./learning-text";
+import { groupHumanitiesUnits } from "./humanities-units";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createClient, Session } from "@supabase/supabase-js";
@@ -1143,7 +1144,7 @@ export default function Home() {
       setHumanitiesUnitsMessage("未能載入人文科單元，請稍後再試。");
     } else {
       const domainMap = new Map(domains.map((domain) => [domain.id, { title_zh: domain.name_zh, code: domain.code }]));
-      setHumanitiesUnits((data || []).filter((unit) => /^5H[1-6]$/.test(unit.code)).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
+      setHumanitiesUnits((data || []).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
     }
     setHumanitiesUnitsLoading(false);
   }
@@ -1799,9 +1800,9 @@ export default function Home() {
     <section className="dashboard-wrap units-wrap humanities-units">
       <button className="back-button" onClick={() => setView("subjects")}><ArrowLeft size={18} />返回科目</button>
       <div className="units-heading"><div className="subject-icon amber"><Sparkles size={25} /></div><div><p className="eyebrow">P5 人文科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供解析並記錄錯題。</p></div></div>
-      {humanitiesUnitsLoading && <div className="unit-status">正在載入6個人文科單元…</div>}
+      {humanitiesUnitsLoading && <div className="unit-status">正在載入人文科單元…</div>}
       {humanitiesUnitsMessage && <div className="unit-status error-message">{humanitiesUnitsMessage}</div>}
-      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && <div className="unit-grid">{humanitiesUnits.map((unit) => <button className="unit-card humanities-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "humanities")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "人文科"}</span><span>開始練習</span></div></button>)}</div>}
+      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && groupHumanitiesUnits(humanitiesUnits).map((group) => <section key={group.code} aria-label={group.title}><h2 style={{ margin: "28px 0 16px" }}>{group.title}</h2><div className="unit-grid">{group.units.map((unit) => <button className="unit-card humanities-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "humanities")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{group.title}</span><span>開始練習</span></div></button>)}</div></section>)}
       {!humanitiesUnitsLoading && !humanitiesUnitsMessage && humanitiesUnits.length === 0 && <div className="unit-status">目前尚未建立人文科單元。</div>}
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
