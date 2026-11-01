@@ -61,12 +61,23 @@ export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumaniti
  const path=combined.get(o.total);
  if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；資料分析題組會完整抽取。');
  const selected=path.indices.map(i=>entries[i]),sections:Section[]=[],active=kinds.filter(k=>o.types.includes(k));
+ let sectionOffset=0;
  for(const kind of active){
   const numeral=['一','二','三','四','五'][active.indexOf(kind)];
-  if(kind==='choice'||kind==='short'){sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:instructions[kind],startNumber:0,questions:shuffle(selected.filter(e=>e.group.kind===kind).flatMap(e=>e.questions),o.seed^sections.length)});continue;}
+  if(kind==='choice'||kind==='short'){sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:instructions[kind],startNumber:0,questions:shuffle(selected.filter(e=>e.group.kind===kind).flatMap(e=>e.questions),o.seed^sectionOffset++)});continue;}
+  if(kind==='fill'){
+   const groups=b.groups.filter(g=>g.kind==='fill'&&selected.some(e=>e.group.id===g.id));
+   const questions=groups.flatMap(group=>shuffle(selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions),o.seed^sectionOffset++));
+   // A shared word box must not list the same term twice, including terms with
+   // different proper-name underline markup. Reuse is permitted when required.
+   const key=(word:string)=>word.replace(/\u0332/g,'').normalize('NFC').trim();
+   const unique=new Map<string,string>();for(const group of groups)for(const word of group.words||[])if(!unique.has(key(word)))unique.set(key(word),word);
+   const repeated=new Set(questions.map(q=>key(q.answer))).size<questions.length;
+   sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:'從詞語框選出適當詞語，填在橫線上。'+(repeated?'詞語可按需要重複使用':'每個詞語只可用一次')+'，有些詞語多餘。',startNumber:0,questions,words:shuffle([...unique.values()],o.seed^0x574f5244)});continue;
+  }
   let startNumber=0;for(const group of b.groups.filter(g=>g.kind===kind)){
    const questions=selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions);if(!questions.length)continue;
-   const numeral=['一','二','三','四','五'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind]+' · '+group.unit+' '+group.title,instructions:instructions[kind],startNumber,questions:kind==='analysis'?questions:shuffle(questions,o.seed^sections.length),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
+   const numeral=['一','二','三','四','五'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+MIXED_TYPES[kind],instructions:instructions[kind],startNumber,questions:kind==='analysis'?(sectionOffset++,questions):shuffle(questions,o.seed^sectionOffset++),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
   }}
  const actual=new Set(selected.map(e=>e.group.unit));return{title:o.title,minutes:o.minutes,total:o.total,units:b.units.filter(u=>actual.has(u.code)).map(u=>u.code+' '+u.title),sections,flow:true};
 }
