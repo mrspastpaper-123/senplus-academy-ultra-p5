@@ -1,0 +1,3 @@
+// Synthetic illustrations and prompts only; approved content stays in the private bank.
+const src='data:image/webp;base64,UklGRjwAAABXRUJQVlA4TDAAAAAv/8E/AA8w//M///MfeDAUwAzNNVnOvQS4ACL6PwHFW/DwvvCb/+a/+W9CsuDhFQ8=';
+module.exports={schemaVersion:1,subject:'humanities-pictures',bankKey:'p5-humanities-pictures-v1',version:'synthetic-picture-v1',groups:['5H2','5H6','5H4'].map((unit,i)=>({id:'TEST-PICTURE-'+i,unit,kind:'picture',title:'Synthetic context '+i,picture:{src,alt:'Synthetic four-panel test image',width:512,height:256},questions:[2,4,2,4].map((marks,j)=>({id:'TEST-PIC-Q'+i+'-'+j,unit,prompt:'圖一至圖四 synthetic prompt '+j,marks,answer:'PRIVATE_PICTURE_ANSWER',points:[{text:'PRIVATE_PICTURE_MARKING',marks}],lines:2}))}))};

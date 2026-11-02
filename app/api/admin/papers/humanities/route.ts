@@ -1,4 +1,4 @@
-import {expandedHumanitiesInventory,validateExpandedOptions,selectExpandedHumanities,loadExpandedHumanitiesBank} from '../../../../../lib/papers/humanities-expanded';
+import {expandedHumanitiesInventory,validateExpandedOptions,selectExpandedHumanities,loadExpandedHumanitiesBank,loadHumanitiesPictures} from '../../../../../lib/papers/humanities-expanded';
 import {validateMixedOptions,loadHumanitiesMixedBank,renderHumanitiesMixed} from '../../../../../lib/papers/humanities-mixed';
 import {AccessError,requirePaperAdmin} from '../../../../../lib/papers/admin-auth';
 import {BankSetupError} from '../../../../../lib/papers/private-bank';
@@ -8,13 +8,13 @@ export const dynamic='force-dynamic';
 export const maxDuration=60;
 const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Authorization','X-Content-Type-Options':'nosniff'};
 function failure(e:unknown){return Response.json({error:e instanceof AccessError||e instanceof BankSetupError?e.message:'暫時無法生成人文科試卷。'},{status:e instanceof AccessError?e.status:e instanceof BankSetupError?503:500,headers});}
-export async function GET(request:Request){try{await requirePaperAdmin(request);return Response.json(new URL(request.url).searchParams.get('mode')==='custom'?expandedHumanitiesInventory(await loadExpandedHumanitiesBank(request)):humanitiesInventory(await loadHumanitiesBank(request)),{headers});}catch(e){return failure(e);}}
+export async function GET(request:Request){try{await requirePaperAdmin(request);return Response.json(new URL(request.url).searchParams.get('mode')==='custom'?expandedHumanitiesInventory(await loadHumanitiesPictures(request,await loadExpandedHumanitiesBank(request))):humanitiesInventory(await loadHumanitiesBank(request)),{headers});}catch(e){return failure(e);}}
 export async function POST(request:Request){try{
  await requirePaperAdmin(request);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return Response.json({error:'設定格式不正確。'},{status:415,headers});
  const body=await request.text();if(body.length>10000)return Response.json({error:'配卷設定過長。'},{status:413,headers});
  const input=JSON.parse(body);
- if(input?.mode==='custom'){const o=validateExpandedOptions(input),b=selectExpandedHumanities(o,await loadExpandedHumanitiesBank(request)),qs=b.sections.flatMap(s=>s.questions);return Response.json({studentHtml:renderHumanitiesMixed(b),answerHtml:renderHumanitiesMixed(b,true),summary:{marks:b.total,items:qs.length,responses:qs.length,units:b.units,ids:qs.map(q=>q.id)}},{headers});}
+ if(input?.mode==='custom'){const o=validateExpandedOptions(input),base=await loadExpandedHumanitiesBank(request),bank=o.types.includes('picture')?await loadHumanitiesPictures(request,base):base,b=selectExpandedHumanities(o,bank),qs=b.sections.flatMap(s=>s.questions);return Response.json({studentHtml:renderHumanitiesMixed(b),answerHtml:renderHumanitiesMixed(b,true),summary:{marks:b.total,items:qs.length,responses:qs.length,units:b.units,ids:qs.map(q=>q.id)}},{headers});}
  if(input?.mode==='mixed'){validateMixedOptions(input);const b=await loadHumanitiesMixedBank(request);return Response.json({studentHtml:renderHumanitiesMixed(b),answerHtml:renderHumanitiesMixed(b,true),summary:{marks:50,items:22,responses:22,units:b.units.map(u=>u.replace(/\u0332/g,'')),ids:[b.bankKey]}},{headers});}
  const o=validateHumanitiesOptions(input),bank=await loadHumanitiesBank(request),qs=selectHumanitiesQuestions(o,bank);
  return Response.json({studentHtml:renderHumanitiesPaper(o,qs,bank),answerHtml:renderHumanitiesPaper(o,qs,bank,true),summary:{marks:o.total,items:qs.length,responses:qs.length,units:[...new Set(qs.map(q=>q.unit))].map(code=>code+' '+bank.units.find(u=>u.code===code)!.title),ids:qs.map(q=>String(q.id))}},{headers});
