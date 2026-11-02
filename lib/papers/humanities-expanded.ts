@@ -1,3 +1,4 @@
+import {validPictureAnswerSpace} from './picture-answer-space';
 import {AccessError} from './admin-auth';
 import {BankSetupError} from './private-bank';
 import {PaperInputError} from './generator';
@@ -6,7 +7,7 @@ import type {Section,HumanitiesMixedPaper} from './humanities-mixed';
 
 type Kind=Section['kind'];
 type Question=Section['questions'][number]&{unit:string;correct?:string};
-type Group={id:string;unit:string;kind:Kind;title:string;questions:Question[];picture?:Section['picture'];words?:string[];stimulus?:Section['stimulus']};
+type Group={id:string;unit:string;kind:Kind;title:string;questions:Question[];picture?:Section['picture'];instructions?:string;words?:string[];stimulus?:Section['stimulus']};
 export type ExpandedHumanitiesBank={schemaVersion:2;subject:'humanities';bankKey:'p5-humanities-mixed-expanded-v1';version:string;units:{code:string;title:string}[];groups:Group[]};
 export const EXPANDED_TYPES:Record<string,string>={...MIXED_TYPES,picture:'情景圖片題'};
 const kinds=Object.keys(EXPANDED_TYPES) as Kind[];
@@ -26,12 +27,14 @@ export function validateExpandedHumanitiesBank(v:unknown):ExpandedHumanitiesBank
   if(!object(g)||!string(g.id,60)||groupIds.has(g.id)||!string(g.unit,10)||!units.has(g.unit)||!kinds.includes(g.kind as Kind)||!string(g.title,100)||!Array.isArray(g.questions)||!g.questions.length||g.questions.length>20)return fail();groupIds.add(g.id);
   const kind=g.kind as Kind,words=g.words;
   if(kind!=='picture'&&g.picture!==undefined)return fail();
+  if(g.instructions!==undefined&&!string(g.instructions,1500))return fail();
   if(kind==='fill'||kind==='match'){if(!Array.isArray(words)||words.length<g.questions.length||words.length>26||words.some(w=>!string(w,300))||new Set(words).size!==words.length)return fail();}
   if(kind==='picture'){const p=g.picture;if(!object(p)||!string(p.alt,500)||!Number.isInteger(p.width)||!Number.isInteger(p.height)||Number(p.width)<512||Number(p.width)>2400||Number(p.height)<256||Number(p.height)>1800||!validPictureSource(p.src)||g.questions.length!==4||g.questions.reduce((n,q)=>n+(object(q)?Number(q.marks):0),0)!==12)return fail();}
   if(kind==='analysis'){const s=g.stimulus;if(!object(s)||!string(s.intro,1500)||!string(s.note,300)||!Array.isArray(s.headers)||s.headers.length!==2||s.headers.some(h=>!string(h,100))||!Array.isArray(s.rows)||!s.rows.length||s.rows.length>12||s.rows.some(r=>!Array.isArray(r)||r.length!==2||r.some(c=>!string(c,300))))return fail();}
   const used=new Set<string>();
   for(const q of g.questions){
    if(!object(q)||!string(q.id,60)||ids.has(q.id)||q.unit!==g.unit||!string(q.prompt)||!string(q.answer)||!Number.isInteger(q.marks)||Number(q.marks)<1||Number(q.marks)>10||!Array.isArray(q.points)||!q.points.length||q.points.length>10)return fail();ids.add(q.id);
+   if(q.answerSpace!==undefined&&(kind!=='picture'||!validPictureAnswerSpace(q.answerSpace)))return fail();
    let score=0;for(const p of q.points){if(!object(p)||!string(p.text)||!Number.isInteger(p.marks)||Number(p.marks)<1)return fail();score+=Number(p.marks);}if(score!==q.marks)return fail();
    if(kind==='choice'){if(!Array.isArray(q.options)||q.options.length!==4||q.options.some(x=>!string(x,500))||new Set(q.options).size!==4||typeof q.correct!=='string'||!/^[A-D]$/.test(q.correct)||q.answer!==q.correct+'．'+q.options[q.correct.charCodeAt(0)-65])return fail();}
    if(kind==='fill'){if(!(words as string[]).includes(q.answer)||!q.prompt.includes('〔填〕')||used.has(q.answer))return fail();used.add(q.answer);}
@@ -47,7 +50,7 @@ export async function loadExpandedHumanitiesBank(request:Request,fetcher:typeof 
  try{const r=await fetcher('https://noaoqdwllmcnmczroyfn.supabase.co/rest/v1/paper_generator_banks?bank_key=eq.p5-humanities-mixed-expanded-v1&select=payload&limit=1',{headers:{apikey:'sb_publishable_-hYVvTs_A97aG_jT_nyiMA_dostycdf',Authorization:request.headers.get('authorization')||''},cache:'no-store',signal:AbortSignal.timeout(10000)});if(r.status===401||r.status===403)throw new AccessError(403,'帳戶未獲授權讀取人文科擴充題庫。');if(!r.ok)throw new BankSetupError('暫時無法讀取人文科擴充題庫。');const rows=await r.json();if(!Array.isArray(rows)||rows.length!==1)throw new BankSetupError('人文科擴充題庫尚未設定。');return validateExpandedHumanitiesBank(rows[0].payload);}catch(e){if(e instanceof AccessError||e instanceof BankSetupError)throw e;throw new BankSetupError('暫時無法讀取人文科擴充題庫。');}
 }
 export function addHumanitiesPictures(base:ExpandedHumanitiesBank,v:unknown):ExpandedHumanitiesBank{
- if(!object(v)||v.schemaVersion!==1||v.subject!=='humanities-pictures'||v.bankKey!=='p5-humanities-pictures-v1'||!string(v.version,80)||!Array.isArray(v.groups)||!v.groups.length||v.groups.length>3||v.groups.some(g=>!object(g)||g.kind!=='picture'))throw new BankSetupError('人文科情景圖片題庫資料不完整。');
+ if(!object(v)||v.schemaVersion!==1||v.subject!=='humanities-pictures'||v.bankKey!=='p5-humanities-pictures-v1'||!string(v.version,80)||!Array.isArray(v.groups)||!v.groups.length||v.groups.length>30||v.groups.some(g=>!object(g)||g.kind!=='picture'))throw new BankSetupError('人文科情景圖片題庫資料不完整。');
  return validateExpandedHumanitiesBank({...base,groups:[...base.groups,...v.groups]});
 }
 export async function loadHumanitiesPictures(request:Request,base:ExpandedHumanitiesBank,fetcher:typeof fetch=fetch):Promise<ExpandedHumanitiesBank>{
@@ -107,7 +110,7 @@ export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumaniti
   }
   let startNumber=0;for(const group of b.groups.filter(g=>g.kind===kind)){
    const questions=selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions);if(!questions.length)continue;
-   const numeral=['一','二','三','四','五','六'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+EXPANDED_TYPES[kind],instructions:instructions[kind],startNumber,questions:kind==='analysis'||kind==='picture'?(sectionOffset++,questions):shuffle(questions,o.seed^sectionOffset++),...(group.picture?{picture:group.picture}:{}),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
+   const numeral=['一','二','三','四','五','六'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+EXPANDED_TYPES[kind],instructions:group.instructions||instructions[kind],startNumber,questions:kind==='analysis'||kind==='picture'?(sectionOffset++,questions):shuffle(questions,o.seed^sectionOffset++),...(group.picture?{picture:group.picture}:{}),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
   }}
  const actual=new Set(selected.map(e=>e.group.unit));return{title:o.title,minutes:o.minutes,total:o.total,units:b.units.filter(u=>actual.has(u.code)).map(u=>u.code+' '+u.title),sections,flow:true};
 }

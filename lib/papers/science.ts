@@ -1,3 +1,4 @@
+import {validPictureAnswerSpace} from './picture-answer-space';
 import {AccessError} from './admin-auth';
 import {BankSetupError} from './private-bank';
 import {PaperInputError} from './generator';
@@ -33,6 +34,7 @@ export function validateScienceBank(v:unknown):ScienceBank{
   const used=new Set<string>();
   for(const q of g.questions){
    if(!object(q)||!string(q.id,60)||ids.has(q.id)||q.unit!==g.unit||!string(q.prompt)||!string(q.answer)||!Number.isInteger(q.marks)||Number(q.marks)<1||Number(q.marks)>10||!Array.isArray(q.points)||!q.points.length||q.points.length>10)return fail();ids.add(q.id);
+   if(q.answerSpace!==undefined&&(kind!=='picture'||!validPictureAnswerSpace(q.answerSpace)))return fail();
    let score=0;for(const p of q.points){if(!object(p)||!string(p.text)||!Number.isInteger(p.marks)||Number(p.marks)<1)return fail();score+=Number(p.marks);}if(score!==q.marks)return fail();
    if(kind==='choice'){if(!Array.isArray(q.options)||q.options.length!==4||q.options.some(x=>!string(x,500))||new Set(q.options).size!==4||typeof q.correct!=='string'||!/^[A-D]$/.test(q.correct)||q.answer!==q.correct+'．'+q.options[q.correct.charCodeAt(0)-65])return fail();}
    if(kind==='fill'){if(!(words as string[]).includes(q.answer)||!q.prompt.includes('〔填〕')||used.has(q.answer))return fail();used.add(q.answer);}
