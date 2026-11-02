@@ -1,8 +1,8 @@
 import {requirePaperAdmin,AccessError} from '../../../../../lib/papers/admin-auth';
 import {BankSetupError} from '../../../../../lib/papers/private-bank';
 import {PaperInputError} from '../../../../../lib/papers/generator';
-import {loadScienceBank,scienceInventory,selectSciencePaper} from '../../../../../lib/papers/science';
-import {SCIENCE_TYPES,validateScienceOptions} from '../../../../../lib/papers/science-options';
+import {loadScienceBank,scienceInventory,selectSciencePaper,validateSciencePaperOptions} from '../../../../../lib/papers/science';
+import {SCIENCE_TYPES} from '../../../../../lib/papers/science-options';
 import {renderHumanitiesMixed} from '../../../../../lib/papers/humanities-mixed';
 export const dynamic='force-dynamic';
 export const maxDuration=60;
@@ -15,11 +15,11 @@ export async function POST(request:Request){try{
  const body=await request.text();if(body.length>10000)return Response.json({error:'配卷設定過長。'},{status:413,headers});
  const input=JSON.parse(body);
  // Validate before reading the private bank. Full mode always means all units,
- // five kinds and exactly 50 marks; custom mode honours the requested scope.
+ // all available kinds and exactly 50 marks; custom mode honours the requested scope.
  const full=input?.mode==='full';
- const o=validateScienceOptions(full?{...input,mode:'custom',total:50,units:['5SC1'],types:Object.keys(SCIENCE_TYPES)}:input);
+ const o=validateSciencePaperOptions(full?{...input,mode:'custom',total:50,units:['5SC1'],types:Object.keys(SCIENCE_TYPES)}:input);
  const bank=await loadScienceBank(request);
- if(full){o.units=bank.units.map(u=>u.code);o.types=Object.keys(SCIENCE_TYPES);}
+ if(full){o.units=bank.units.map(u=>u.code);o.types=Object.keys(scienceInventory(bank).types);}
  const paper=selectSciencePaper(o,bank),qs=paper.sections.flatMap(s=>s.questions);
  return Response.json({studentHtml:renderHumanitiesMixed(paper),answerHtml:renderHumanitiesMixed(paper,true),summary:{marks:paper.total,items:qs.length,responses:qs.length,units:paper.units,ids:qs.map(q=>q.id)}},{headers});
  }catch(e){if(e instanceof PaperInputError||e instanceof SyntaxError)return Response.json({error:e instanceof SyntaxError?'配卷設定格式不正確。':e.message},{status:400,headers});return failure(e);}}

@@ -4,14 +4,19 @@ import {PaperInputError} from './generator';
 import {SCIENCE_TYPES, type ScienceOptions, validateScienceOptions} from './science-options';
 import type {Section,HumanitiesMixedPaper} from './humanities-mixed';
 
-type Kind=Exclude<Section['kind'],'picture'>;
+type Kind=Section['kind'];
 type Question=Section['questions'][number]&{unit:string;correct?:string};
-type Group={id:string;unit:string;kind:Kind;title:string;questions:Question[];picture?:Section['picture'];words?:string[];stimulus?:Section['stimulus']};
+type Group={id:string;unit:string;kind:Kind;title:string;questions:Question[];picture?:Section['picture'];instructions?:string;words?:string[];stimulus?:Section['stimulus']};
 export type ScienceBank={schemaVersion:1;subject:'science';bankKey:'p5-science-mixed-v1';version:string;units:{code:string;title:string}[];groups:Group[]};
-export const SCIENCE_PAPER_TYPES:Record<string,string>={...SCIENCE_TYPES};
+export const SCIENCE_PAPER_TYPES:Record<string,string>={...SCIENCE_TYPES,picture:'科學圖片題'};
 const kinds=Object.keys(SCIENCE_PAPER_TYPES) as Kind[];
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const string=(v:unknown,max=5000):v is string=>typeof v==='string'&&v.trim().length>0&&v.length<=max&&!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/.test(v);
+function validPictureSource(v:unknown):v is string{
+ if(typeof v!=='string'||v.length>800000||!/^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(v))return false;
+ const encoded=v.slice('data:image/webp;base64,'.length);if(encoded.length%4)return false;
+ try{const header=atob(encoded.slice(0,16));return header.slice(0,4)==='RIFF'&&header.slice(8,12)==='WEBP';}catch{return false;}
+}
 export function validateScienceBank(v:unknown):ScienceBank{
  const fail=():never=>{throw new BankSetupError('科學科混合題庫資料不完整，請聯絡管理員。');};
  if(!object(v)||v.schemaVersion!==1||v.subject!=='science'||v.bankKey!=='p5-science-mixed-v1'||!string(v.version,80)||!Array.isArray(v.units)||!v.units.length||v.units.length>30||!Array.isArray(v.groups)||!v.groups.length||v.groups.length>500)return fail();
@@ -20,7 +25,9 @@ export function validateScienceBank(v:unknown):ScienceBank{
  for(const g of v.groups){
   if(!object(g)||!string(g.id,60)||groupIds.has(g.id)||!string(g.unit,10)||!units.has(g.unit)||!kinds.includes(g.kind as Kind)||!string(g.title,100)||!Array.isArray(g.questions)||!g.questions.length||g.questions.length>20)return fail();groupIds.add(g.id);
   const kind=g.kind as Kind,words=g.words;
-  if(g.picture!==undefined)return fail();
+  if(kind!=='picture'&&g.picture!==undefined)return fail();
+  if(g.instructions!==undefined&&!string(g.instructions,1500))return fail();
+  if(kind==='picture'){const p=g.picture;if(!object(p)||!string(p.alt,800)||!Number.isInteger(p.width)||!Number.isInteger(p.height)||Number(p.width)<512||Number(p.width)>2400||Number(p.height)<256||Number(p.height)>1800||!validPictureSource(p.src)||g.questions.length!==4||g.questions.reduce((n,q)=>n+(object(q)?Number(q.marks):0),0)!==12)return fail();}
   if(kind==='fill'||kind==='match'){if(!Array.isArray(words)||words.length<g.questions.length||words.length>26||words.some(w=>!string(w,300))||new Set(words).size!==words.length)return fail();}
   if(kind==='analysis'){if(g.questions.length!==4||g.questions.reduce((n,q)=>n+(object(q)?Number(q.marks):0),0)!==12)return fail();const s=g.stimulus;if(!object(s)||!string(s.intro,1500)||!string(s.note,300)||!Array.isArray(s.headers)||s.headers.length!==2||s.headers.some(h=>!string(h,100))||!Array.isArray(s.rows)||!s.rows.length||s.rows.length>12||s.rows.some(r=>!Array.isArray(r)||r.length!==2||r.some(c=>!string(c,300))))return fail();}
   const used=new Set<string>();
@@ -30,7 +37,7 @@ export function validateScienceBank(v:unknown):ScienceBank{
    if(kind==='choice'){if(!Array.isArray(q.options)||q.options.length!==4||q.options.some(x=>!string(x,500))||new Set(q.options).size!==4||typeof q.correct!=='string'||!/^[A-D]$/.test(q.correct)||q.answer!==q.correct+'．'+q.options[q.correct.charCodeAt(0)-65])return fail();}
    if(kind==='fill'){if(!(words as string[]).includes(q.answer)||!q.prompt.includes('〔填〕')||used.has(q.answer))return fail();used.add(q.answer);}
    if(kind==='match'){if(typeof q.correct!=='string'||!/^[A-Z]$/.test(q.correct)||(words as string[])[q.correct.charCodeAt(0)-65]===undefined||q.answer!==q.correct+'．'+(words as string[])[q.correct.charCodeAt(0)-65]||used.has(q.correct))return fail();used.add(q.correct);}
-   if((kind==='short'||kind==='analysis')&&(!Number.isInteger(q.lines)||Number(q.lines)<1||Number(q.lines)>6))return fail();
+   if((kind==='short'||kind==='analysis'||kind==='picture')&&(!Number.isInteger(q.lines)||Number(q.lines)<1||Number(q.lines)>6))return fail();
   }
  }
  const groups=v.groups;
@@ -40,14 +47,14 @@ export function validateScienceBank(v:unknown):ScienceBank{
 export async function loadScienceBank(request:Request,fetcher:typeof fetch=fetch):Promise<ScienceBank>{
  try{const r=await fetcher('https://noaoqdwllmcnmczroyfn.supabase.co/rest/v1/paper_generator_banks?bank_key=eq.p5-science-mixed-v1&select=payload&limit=1',{headers:{apikey:'sb_publishable_-hYVvTs_A97aG_jT_nyiMA_dostycdf',Authorization:request.headers.get('authorization')||''},cache:'no-store',signal:AbortSignal.timeout(10000)});if(r.status===401||r.status===403)throw new AccessError(403,'帳戶未獲授權讀取科學科題庫。');if(!r.ok)throw new BankSetupError('暫時無法讀取科學科題庫。');const rows=await r.json();if(!Array.isArray(rows)||rows.length!==1)throw new BankSetupError('科學科題庫尚未設定。');return validateScienceBank(rows[0].payload);}catch(e){if(e instanceof AccessError||e instanceof BankSetupError)throw e;throw new BankSetupError('暫時無法讀取科學科題庫。');}
 }
-export const validateSciencePaperOptions=(v:unknown)=>validateScienceOptions(v);
-export function scienceInventory(b:ScienceBank){return{units:b.units.map(u=>{const groups=b.groups.filter(g=>g.unit===u.code);return{...u,count:groups.reduce((n,g)=>n+(g.kind==='analysis'?1:g.questions.length),0),responses:groups.reduce((n,g)=>n+g.questions.length,0),marks:groups.reduce((n,g)=>n+g.questions.reduce((a,q)=>a+q.marks,0),0)};}),types:SCIENCE_PAPER_TYPES,responses:b.groups.reduce((n,g)=>n+g.questions.length,0),typeCounts:Object.fromEntries(kinds.map(k=>[k,b.groups.filter(g=>g.kind===k).reduce((n,g)=>n+g.questions.length,0)])),maxMarks:100};}
+export const validateSciencePaperOptions=(v:unknown)=>validateScienceOptions(v,SCIENCE_PAPER_TYPES);
+export function scienceInventory(b:ScienceBank){return{units:b.units.map(u=>{const groups=b.groups.filter(g=>g.unit===u.code);return{...u,count:groups.reduce((n,g)=>n+(g.kind==='analysis'||g.kind==='picture'?1:g.questions.length),0),responses:groups.reduce((n,g)=>n+g.questions.length,0),marks:groups.reduce((n,g)=>n+g.questions.reduce((a,q)=>a+q.marks,0),0)};}),types:Object.fromEntries(Object.entries(SCIENCE_PAPER_TYPES).filter(([k])=>k!=='picture'||b.groups.some(g=>g.kind==='picture'))),responses:b.groups.reduce((n,g)=>n+g.questions.length,0),typeCounts:Object.fromEntries(kinds.map(k=>[k,b.groups.filter(g=>g.kind===k).reduce((n,g)=>n+g.questions.length,0)])),maxMarks:100};}
 function shuffle<T>(input:T[],seed:number){const a=[...input];for(let i=a.length-1;i>0;i--){seed=(Math.imul(seed,1664525)+1013904223)>>>0;const j=Math.floor(seed/4294967296*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 const wordKey=(word:string)=>word.replace(/\u0332/g,'').normalize('NFC').trim();
-const instructions:Record<Kind,string>={choice:'每題選出一個正確答案，並在該選項前的方格內加上 ☑。',fill:'從本組詞語框選出適當詞語，填在橫線上。每個詞語只可用一次，有些詞語多餘。',match:'把本組合適說明前的英文字母，填在各題括號內。每個字母只可用一次，有些說明多餘。',analysis:'細閱本組資料，回答以下各題。',short:'按題目要求作答，提出合理做法並說明原因。'};
+const instructions:Record<Kind,string>={choice:'每題選出一個正確答案，並在該選項前的方格內加上 ☑。',fill:'從本組詞語框選出適當詞語，填在橫線上。每個詞語只可用一次，有些詞語多餘。',match:'把本組合適說明前的英文字母，填在各題括號內。每個字母只可用一次，有些說明多餘。',analysis:'細閱本組資料，回答以下各題。',short:'按題目要求作答，提出合理做法並說明原因。',picture:'細閱圖一至圖四，回答以下問題。'};
 export function selectSciencePaper(o:ScienceOptions,b:ScienceBank):HumanitiesMixedPaper{
  if(o.units.some(u=>!b.units.some(x=>x.code===u)))throw new PaperInputError('所選單元未有混合題目，請重新選擇範圍。');
- const rawEntries=shuffle(b.groups.filter(g=>o.units.includes(g.unit)&&o.types.includes(g.kind)),o.seed).flatMap(group=>group.kind==='analysis'?[{group,questions:group.questions,marks:group.questions.reduce((n,q)=>n+q.marks,0)}]:group.questions.map(q=>({group,questions:[q],marks:q.marks}))); 
+ const rawEntries=shuffle(b.groups.filter(g=>o.units.includes(g.unit)&&o.types.includes(g.kind)),o.seed).flatMap(group=>group.kind==='analysis'||group.kind==='picture'?[{group,questions:group.questions,marks:group.questions.reduce((n,q)=>n+q.marks,0)}]:group.questions.map(q=>({group,questions:[q],marks:q.marks}))); 
  // Matching letters are used once: equivalent descriptions cannot be selected
  // as different answers when combining contexts into one shared option box.
  const matchingAnswers=new Set<string>();
@@ -67,7 +74,7 @@ export function selectSciencePaper(o:ScienceOptions,b:ScienceBank):HumanitiesMix
   combined=next;
  }
  const path=combined.get(o.total);
- if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；配對題須有 5–6 題，資料分析題每組 12 分，均會完整抽取。');
+ if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；配對題須有 5–6 題，資料分析及科學圖片題每組 12 分，均會完整抽取。');
  const selected=path.indices.map(i=>entries[i]),sections:Section[]=[],active=kinds.filter(k=>o.types.includes(k));
  let sectionOffset=0;
  for(const kind of active){
@@ -94,7 +101,7 @@ export function selectSciencePaper(o:ScienceOptions,b:ScienceBank):HumanitiesMix
   }
   let startNumber=0;for(const group of b.groups.filter(g=>g.kind===kind)){
    const questions=selected.filter(e=>e.group.id===group.id).flatMap(e=>e.questions);if(!questions.length)continue;
-   const numeral=['一','二','三','四','五','六'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+SCIENCE_PAPER_TYPES[kind],instructions:instructions[kind],startNumber,questions:kind==='analysis'?(sectionOffset++,questions):shuffle(questions,o.seed^sectionOffset++),...(group.picture?{picture:group.picture}:{}),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
+   const numeral=['一','二','三','四','五','六'][active.indexOf(kind)];sections.push({kind,title:numeral+'、'+SCIENCE_PAPER_TYPES[kind],instructions:group.instructions||instructions[kind],startNumber,questions:kind==='analysis'||kind==='picture'?(sectionOffset++,questions):shuffle(questions,o.seed^sectionOffset++),...(group.picture?{picture:group.picture}:{}),...(group.words?{words:group.words}:{}),...(group.stimulus?{stimulus:group.stimulus}:{})});startNumber+=questions.length;
   }}
  const actual=new Set(selected.map(e=>e.group.unit));return{title:o.title,minutes:o.minutes,total:o.total,units:b.units.filter(u=>actual.has(u.code)).map(u=>u.code+' '+u.title),sections,flow:true,subjectLabel:'科學科'};
 }
