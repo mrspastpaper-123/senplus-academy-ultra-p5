@@ -1,3 +1,4 @@
+import {drawByUnit} from './unit-draw';
 import {validPictureAnswerSpace} from './picture-answer-space';
 import {AccessError} from './admin-auth';
 import {BankSetupError} from './private-bank';
@@ -72,7 +73,7 @@ export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumaniti
  // score x 3, rather than score x 3^types for every question in the whole bank.
  type Path={indices:number[];count:number};
  let combined=new Map<number,Path>([[0,{indices:[],count:0}]]);
- for(const kind of kinds.filter(k=>o.types.includes(k))){
+ if(!o.unitCounts) for(const kind of kinds.filter(k=>o.types.includes(k))){
   const pool=entries.map((e,i)=>({e,i})).filter(x=>x.e.group.kind===kind);
   if(kind==='match'&&pool.length<5)throw new PaperInputError('所選單元不足 5 題不同答案的配對題。配對題須有 5–6 題，請增加單元或取消配對題。');
   if(!pool.length)throw new PaperInputError('所選單元暫無「'+EXPANDED_TYPES[kind]+'」，請調整範圍。');
@@ -83,8 +84,10 @@ export function selectExpandedHumanities(o:CustomMixedOptions,b:ExpandedHumaniti
   combined=next;
  }
  const path=combined.get(o.total);
- if(!path)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；配對題須有 5–6 題，資料分析及情景圖片題每組 12 分，均會完整抽取。');
- const selected=path.indices.map(i=>entries[i]),sections:Section[]=[],active=kinds.filter(k=>o.types.includes(k));
+ const drawn=o.unitCounts?drawByUnit(entries,o.unitCounts,o.total,e=>({unit:e.group.unit,marks:e.marks,kind:e.group.kind}),o.types):undefined;
+ if(o.unitCounts&&!drawn)throw new PaperInputError('未能同時配合各單元抽題數量、題型及總分，請調整設定。');
+ if(!path&&!drawn)throw new PaperInputError('未能以所選範圍及全部所選題型剛好配足 '+o.total+' 分。請調整總分、增加單元或減少題型；配對題須有 5–6 題，資料分析及情景圖片題每組 12 分，均會完整抽取。');
+ const selected=drawn??path!.indices.map(i=>entries[i]),sections:Section[]=[],active=kinds.filter(k=>o.types.includes(k));
  let sectionOffset=0;
  for(const kind of active){
   const numeral=['一','二','三','四','五','六'][active.indexOf(kind)];

@@ -1,10 +1,11 @@
+import {readUnitCounts, type UnitCounts, drawByUnit} from './unit-draw';
 export type Point={text:string;marks:number};
 export type Sub={id:string;prompt:string;answer:string;marks:number;marking_points:Point[]};
 export type Question=Sub&{unit_code:string;type:string;paper:string;section:string;diagram?:string|null;subquestions?:Sub[];options?:{id:string;text:string}[]};
 export type Bank={schemaVersion:1;questions:Question[];diagrams:Record<string,{student:string;answer:string}>};
 export const UNITS:Record<string,string>={'5N1':'大數','5N2':'分數加減','5N3':'分數乘法','5N4':'小數運算','5N5':'分數除法','5A1':'代數初步','5A2':'簡易方程','5M1':'面積','5M2':'體積','5S1':'圓','5S2':'立體圖形','5D1':'棒形圖'};
 export const TYPES:Record<string,string>={short_answer:'基本短答',multiple_choice:'選擇題',calculation:'計算題',diagram:'圖形題',measurement:'度量題',drawing:'畫圖題',application:'應用題',shared_stimulus:'共用題組'};
-export type Options={mode:'full'|'mini'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number};
+export type Options={mode:'full'|'mini'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number;unitCounts?:UnitCounts};
 export class PaperInputError extends Error{}
 export function validateOptions(value:unknown):Options{
  if(!value||typeof value!=='object')throw new PaperInputError('設定格式不正確。');
@@ -15,7 +16,8 @@ export function validateOptions(value:unknown):Options{
  if(!Number.isInteger(v.total)||Number(v.total)<2||Number(v.total)>150)throw new PaperInputError('總分須為 2 至 150 分。');
  if(!Number.isInteger(v.seed)||Number(v.seed)<0||Number(v.seed)>4294967295)throw new PaperInputError('請重新生成試卷。');
  for(const [key,allowed]of [['units',UNITS],['types',TYPES]]as const){if(!Array.isArray(v[key])||!(v[key]as unknown[]).length||(v[key]as unknown[]).some(x=>typeof x!=='string'||!Object.prototype.hasOwnProperty.call(allowed,x)))throw new PaperInputError('請選擇有效的單元及題型。');}
- const o={...v,title:v.title.trim(),units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])]}as Options;
+ const unitCounts=v.mode==='custom'?readUnitCounts(v.unitCounts,v.units as string[],()=>{throw new PaperInputError('請檢查各單元的抽題數量。');}):undefined;
+ const o={...v,...(unitCounts?{unitCounts}:{}),title:v.title.trim(),units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])]}as Options;
  if(o.mode==='full'&&o.total!==100||o.mode==='mini'&&o.total!==50)throw new PaperInputError('範本總分不正確。');return o;
 }
 function shuffle<T>(values:T[],seed:number){const a=[...values];for(let i=a.length-1;i>0;i--){seed=(Math.imul(1664525,seed)+1013904223)>>>0;const j=Math.floor(seed/4294967296*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
@@ -28,7 +30,7 @@ export function selectQuestions(o:Options,bank:Bank){
  }
  const sums=new Map<number,Question[]>([[0,[]]]);
  for(const q of shuffle(qs,o.seed))for(const [sum,list]of [...sums].sort((a,b)=>b[0]-a[0])){const n=sum+q.marks;if(n<=o.total&&!sums.has(n))sums.set(n,[...list,q]);}
- const found=sums.get(o.total);if(!found)throw new PaperInputError('所選單元及題型未能剛好配出 '+o.total+' 分，請降低總分或增加單元／題型。系統不會重複題目或改動原定分數。');
+ const found=o.unitCounts?drawByUnit(shuffle(qs,o.seed),o.unitCounts,o.total,q=>({unit:q.unit_code,marks:q.marks})):sums.get(o.total);if(o.unitCounts&&!found)throw new PaperInputError('未能同時配合各單元抽題數量、題型及總分，請調整設定。');if(!found)throw new PaperInputError('所選單元及題型未能剛好配出 '+o.total+' 分，請降低總分或增加單元／題型。系統不會重複題目或改動原定分數。');
  const order=Object.keys(TYPES);return found.sort((a,b)=>order.indexOf(a.type)-order.indexOf(b.type));
 }
 const esc=(s:unknown)=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));

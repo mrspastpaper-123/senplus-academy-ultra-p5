@@ -17,7 +17,7 @@ export async function POST(request:Request){try{
  // Validate before reading the private bank. Full mode always means all units,
  // all available kinds and exactly 50 marks; custom mode honours the requested scope.
  const full=input?.mode==='full';
- const o=validateSciencePaperOptions(full?{...input,mode:'custom',total:50,units:['5SC1'],types:Object.keys(SCIENCE_TYPES)}:input);
+ const o=validateSciencePaperOptions(full?{...input,unitCounts:undefined,mode:'custom',total:50,units:['5SC1'],types:Object.keys(SCIENCE_TYPES)}:input);
  const bank=await loadScienceBank(request);
  if(full){o.units=bank.units.map(u=>u.code);o.types=Object.keys(scienceInventory(bank).types);}
  const paper=selectSciencePaper(o,bank),qs=paper.sections.flatMap(s=>s.questions);

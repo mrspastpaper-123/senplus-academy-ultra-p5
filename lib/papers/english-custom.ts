@@ -1,10 +1,11 @@
+import {readUnitCounts, type UnitCounts, drawByUnit} from './unit-draw';
 import {PaperInputError} from './generator';
 import type {EnglishPaper} from './english';
 export const ENGLISH_UNITS:Record<string,string>={vocabulary:'詞彙 Vocabulary',tenses:'時態 Tenses',prepositions:'介詞 Prepositions',question_words:'疑問詞及代詞 Question Words and Pronouns',connectives:'連接詞 Connectives',proofreading:'改正錯誤 Proofreading',sentence_patterns:'句式改寫 Sentence Patterns',notice:'通告閱讀 School Notice',story:'故事閱讀 Story',email:'電郵閱讀 Email'};
 export const ENGLISH_TYPES:Record<string,string>={word_fill:'供詞填充',verb_fill:'動詞時態填充',preposition_fill:'介詞填充',word_choice:'括號選詞填充',sentence_join:'合併句子',error_correction:'改正錯誤',sentence_rewrite:'句式改寫',reading_group:'閱讀理解完整題組'};
 export type EnglishSub={prompt:string;answer:string;marks:number;lines?:number;choices?:string[];marking?:string};
 export type EnglishQuestion=EnglishSub&{id:string;unit:string;type:string;section:string;instruction?:string;wordBank?:string[];passage?:string[];subquestions?:EnglishSub[]};
-export type EnglishOptions={mode:'full'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number};
+export type EnglishOptions={mode:'full'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number;unitCounts?:UnitCounts};
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=10000):v is string=>typeof v==='string'&&v.length<=max;
 const list=(v:unknown,max=30):v is string[]=>Array.isArray(v)&&v.length<=max&&v.every(x=>str(x,10000)&&!!x.trim());
@@ -26,7 +27,8 @@ export function validateEnglishOptions(v:unknown):EnglishOptions{
  if(!obj(v))return fail();
  for(const[key,allowed]of[['units',ENGLISH_UNITS],['types',ENGLISH_TYPES]]as const)if(!Array.isArray(v[key])||!v[key].length||(v[key] as unknown[]).some(x=>typeof x!=='string'||!Object.hasOwn(allowed,x)))return fail();
  if(v.mode==='full'&&(v.total!==85||v.minutes!==60||v.title!=='P5 English Practice Paper'||new Set(v.units as string[]).size!==Object.keys(ENGLISH_UNITS).length||new Set(v.types as string[]).size!==Object.keys(ENGLISH_TYPES).length))return fail();
- return{mode:v.mode as 'full'|'custom',title:(v.title as string).trim(),minutes:v.minutes as number,total:v.total as number,units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])],seed:seed as number};
+ const unitCounts=v.mode==='custom'?readUnitCounts(v.unitCounts,v.units as string[],()=>{throw new PaperInputError('請檢查各單元的抽題數量。');}):undefined;
+ return{...(unitCounts?{unitCounts}:{}),mode:v.mode as 'full'|'custom',title:(v.title as string).trim(),minutes:v.minutes as number,total:v.total as number,units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])],seed:seed as number};
 }
 function shuffle<T>(xs:T[],seed:number){const a=[...xs];for(let i=a.length-1;i>0;i--){seed=(Math.imul(1664525,seed)+1013904223)>>>0;const j=Math.floor(seed/4294967296*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function selectEnglishQuestions(o:EnglishOptions,bank:EnglishPaper){
@@ -34,7 +36,7 @@ export function selectEnglishQuestions(o:EnglishOptions,bank:EnglishPaper){
  const pool=bank.questions.filter(q=>o.units.includes(q.unit)&&o.types.includes(q.type));
  const sums=new Map<number,EnglishQuestion[]>([[0,[]]]);
  for(const q of shuffle(pool,o.seed))for(const[sum,qs]of[...sums].sort((a,b)=>b[0]-a[0])){const next=sum+q.marks;if(next<=o.total&&!sums.has(next))sums.set(next,[...qs,q]);}
- const found=sums.get(o.total);if(!found)throw new PaperInputError('所選項目未能剛好配出 '+o.total+' 分。請調低總分或增加範圍／題型；閱讀題組以 8、10 或 7 分完整抽取，不拆題或重複題目。');
+ const found=o.unitCounts?drawByUnit(shuffle(pool,o.seed),o.unitCounts,o.total,q=>({unit:q.unit,marks:q.marks})):sums.get(o.total);if(o.unitCounts&&!found)throw new PaperInputError('未能同時配合各單元抽題數量、題型及總分，請調整設定。');if(!found)throw new PaperInputError('所選項目未能剛好配出 '+o.total+' 分。請調低總分或增加範圍／題型；閱讀題組以 8、10 或 7 分完整抽取，不拆題或重複題目。');
  const order=Object.keys(ENGLISH_UNITS);return found.sort((a,b)=>order.indexOf(a.unit)-order.indexOf(b.unit)||bank.questions!.findIndex(q=>q.id===a.id)-bank.questions!.findIndex(q=>q.id===b.id));
 }
 export function customEnglishInventory(bank:EnglishPaper){return{units:Object.entries(ENGLISH_UNITS).map(([code,title])=>({code,title,count:bank.questions?.filter(q=>q.unit===code).length||0,marks:bank.questions?.filter(q=>q.unit===code).reduce((s,q)=>s+q.marks,0)||0})),types:ENGLISH_TYPES,subject:'english',maxMarks:bank.questions?.reduce((s,q)=>s+q.marks,0)||0};}

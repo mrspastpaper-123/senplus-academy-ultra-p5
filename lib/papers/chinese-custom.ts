@@ -1,3 +1,4 @@
+import {readUnitCounts, type UnitCounts, drawByUnit} from './unit-draw';
 import {PaperInputError} from './generator';
 import type {ChinesePaper} from './chinese';
 export const CHINESE_UNITS:Record<string,string>={words:'詞語、配詞及成語',punctuation:'標點符號',sentences:'句子運用',rhetoric:'修辭辨析',ordering:'排句成段',narrative:'記敘文閱讀',expository:'說明文閱讀',practical:'實用文閱讀'};
@@ -5,7 +6,7 @@ export const CHINESE_TYPES:Record<string,string>={fill:'詞語／成語填充',w
 export type ChineseSub={prompt:string;answer:string;marks:number;lines?:number;choices?:string[]};
 export type ChineseQuestion=ChineseSub&{id:string;unit:string;type:string;section:string;responses?:number;wordBank?:string[];passage?:string[];signature?:string;subquestions?:ChineseSub[]};
 export type ProperName={text:string;prefix:number};
-export type ChineseOptions={mode:'full'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number};
+export type ChineseOptions={mode:'full'|'custom';title:string;minutes:number;total:number;units:string[];types:string[];seed:number;unitCounts?:UnitCounts};
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=10000):v is string=>typeof v==='string'&&v.length<=max;
 const list=(v:unknown,max=30):v is string[]=>Array.isArray(v)&&v.length<=max&&v.every(x=>str(x,10000));
@@ -25,7 +26,8 @@ export function validateChineseOptions(v:unknown):ChineseOptions{
  const fail=():never=>{throw new PaperInputError('中文配卷設定不正確，請檢查標題、時間、總分及所選項目。');};
  if(!obj(v)||!['full','custom'].includes(String(v.mode))||!str(v.title,60)||!v.title.trim()||/[\u0000-\u001f]/.test(v.title)||!Number.isInteger(v.minutes)||Number(v.minutes)<5||Number(v.minutes)>180||!Number.isInteger(v.total)||Number(v.total)<2||Number(v.total)>150||!Number.isInteger(v.seed)||Number(v.seed)<0||Number(v.seed)>4294967295)return fail();
  for(const [key,allowed]of [['units',CHINESE_UNITS],['types',CHINESE_TYPES]]as const)if(!Array.isArray(v[key])||!v[key].length||(v[key]as unknown[]).some(x=>typeof x!=='string'||!Object.hasOwn(allowed,x)))return fail();
- if(v.mode==='full'&&v.total!==100)return fail();return {...v,title:v.title.trim(),units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])]}as ChineseOptions;
+ const unitCounts=v.mode==='custom'?readUnitCounts(v.unitCounts,v.units as string[],()=>{throw new PaperInputError('請檢查各單元的抽題數量。');}):undefined;
+ if(v.mode==='full'&&v.total!==100)return fail();return {...v,...(unitCounts?{unitCounts}:{}),title:v.title.trim(),units:[...new Set(v.units as string[])],types:[...new Set(v.types as string[])]}as ChineseOptions;
 }
 function shuffle<T>(xs:T[],seed:number){const a=[...xs];for(let i=a.length-1;i>0;i--){seed=(Math.imul(1664525,seed)+1013904223)>>>0;const j=Math.floor(seed/4294967296*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
 export function selectChineseQuestions(o:ChineseOptions,bank:ChinesePaper){
@@ -34,7 +36,7 @@ export function selectChineseQuestions(o:ChineseOptions,bank:ChinesePaper){
  if(o.mode==='full'){if(pool.reduce((s,q)=>s+q.marks,0)!==100)throw new PaperInputError('綜合示範卷須保留全部單元及題型。');return [...pool];}
  const sums=new Map<number,ChineseQuestion[]>([[0,[]]]);
  for(const q of shuffle(pool,o.seed))for(const [sum,qs]of [...sums].sort((a,b)=>b[0]-a[0])){const next=sum+q.marks;if(next<=o.total&&!sums.has(next))sums.set(next,[...qs,q]);}
- const found=sums.get(o.total);if(!found)throw new PaperInputError('所選項目未能剛好配出 '+o.total+' 分。請調低總分或增加單元／題型；閱讀題組會完整保留，不拆題或重複題目。');
+ const found=o.unitCounts?drawByUnit(shuffle(pool,o.seed),o.unitCounts,o.total,q=>({unit:q.unit,marks:q.marks})):sums.get(o.total);if(o.unitCounts&&!found)throw new PaperInputError('未能同時配合各單元抽題數量、題型及總分，請調整設定。');if(!found)throw new PaperInputError('所選項目未能剛好配出 '+o.total+' 分。請調低總分或增加單元／題型；閱讀題組會完整保留，不拆題或重複題目。');
  const order=Object.keys(CHINESE_UNITS);return found.sort((a,b)=>order.indexOf(a.unit)-order.indexOf(b.unit)||bank.questions!.findIndex(q=>q.id===a.id)-bank.questions!.findIndex(q=>q.id===b.id));
 }
 export function customChineseInventory(bank:ChinesePaper){return{units:Object.entries(CHINESE_UNITS).map(([code,title])=>({code,title,count:bank.questions?.filter(q=>q.unit===code).length||0,marks:bank.questions?.filter(q=>q.unit===code).reduce((s,q)=>s+q.marks,0)||0})),types:CHINESE_TYPES,subject:'chinese',maxMarks:bank.questions?.reduce((s,q)=>s+q.marks,0)||0};}
