@@ -1,3 +1,4 @@
+import {availableTextbookTypes,textbookBank,usesTextbookScope} from '../../../../../lib/papers/textbook-scope';
 import {requirePaperAdmin,AccessError} from '../../../../../lib/papers/admin-auth';
 import {BankSetupError} from '../../../../../lib/papers/private-bank';
 import {PaperInputError} from '../../../../../lib/papers/generator';
@@ -8,7 +9,12 @@ export const dynamic='force-dynamic';
 export const maxDuration=60;
 const headers={'Cache-Control':'private, no-store, max-age=0','Vary':'Authorization','X-Content-Type-Options':'nosniff'};
 function failure(e:unknown){return Response.json({error:e instanceof AccessError||e instanceof BankSetupError?e.message:'暫時無法生成科學科試卷。'},{status:e instanceof AccessError?e.status:e instanceof BankSetupError?503:500,headers});}
-export async function GET(request:Request){try{await requirePaperAdmin(request);return Response.json(scienceInventory(await loadScienceBank(request)),{headers});}catch(e){return failure(e);}}
+export async function GET(request:Request){try{
+ await requirePaperAdmin(request);
+ const bank=await loadScienceBank(request);
+ const inventory=usesTextbookScope(request)?availableTextbookTypes(scienceInventory(textbookBank(bank))):scienceInventory(bank);
+ return Response.json(inventory,{headers});
+}catch(e){return failure(e);}}
 export async function POST(request:Request){try{
  await requirePaperAdmin(request);
  if(!request.headers.get('content-type')?.startsWith('application/json'))return Response.json({error:'設定格式不正確。'},{status:415,headers});
@@ -17,8 +23,11 @@ export async function POST(request:Request){try{
  // Validate before reading the private bank. Full mode always means all units,
  // all available kinds and exactly 50 marks; custom mode honours the requested scope.
  const full=input?.mode==='full';
+ const textbook=usesTextbookScope(request);
+ if(textbook&&input?.mode!=='custom')throw new PaperInputError('教材參照範圍只適用於自選混合卷。');
  const o=validateSciencePaperOptions(full?{...input,unitCounts:undefined,mode:'custom',total:50,units:['5SC1'],types:Object.keys(SCIENCE_TYPES)}:input);
- const bank=await loadScienceBank(request);
+ const base=await loadScienceBank(request);
+ const bank=textbook?textbookBank(base):base;
  if(full){o.units=bank.units.map(u=>u.code);o.types=Object.keys(scienceInventory(bank).types);}
  const paper=selectSciencePaper(o,bank),qs=paper.sections.flatMap(s=>s.questions);
  return Response.json({studentHtml:renderHumanitiesMixed(paper),answerHtml:renderHumanitiesMixed(paper,true),summary:{marks:paper.total,items:qs.length,responses:qs.length,units:paper.units,ids:qs.map(q=>q.id)}},{headers});

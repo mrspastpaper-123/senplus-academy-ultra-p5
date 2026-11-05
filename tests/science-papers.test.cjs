@@ -1,6 +1,6 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict'),test=require('node:test'),ts=require('typescript');
 const root=path.resolve(__dirname,'..'),dest=path.join(root,'.paper-tests/science-papers');fs.mkdirSync(dest,{recursive:true});fs.writeFileSync(path.join(dest,'package.json'),'{"type":"commonjs"}');
-for(const name of ['lib/papers/unit-draw.ts','lib/papers/generator.ts','lib/papers/admin-auth.ts','lib/papers/private-bank.ts','lib/papers/science.ts','lib/papers/science-options.ts','lib/papers/humanities-mixed.ts','lib/papers/picture-answer-space.ts','app/api/admin/papers/science/route.ts']){const p=path.join(dest,name.replace(/\.ts$/,'.js'));fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,ts.transpileModule(fs.readFileSync(path.join(root,name),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText);}
+for(const name of ['lib/papers/textbook-scope.ts','lib/papers/unit-draw.ts','lib/papers/generator.ts','lib/papers/admin-auth.ts','lib/papers/private-bank.ts','lib/papers/science.ts','lib/papers/science-options.ts','lib/papers/humanities-mixed.ts','lib/papers/picture-answer-space.ts','app/api/admin/papers/science/route.ts']){const p=path.join(dest,name.replace(/\.ts$/,'.js'));fs.mkdirSync(path.dirname(p),{recursive:true});fs.writeFileSync(p,ts.transpileModule(fs.readFileSync(path.join(root,name),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText);}
 const g=require(path.join(dest,'lib/papers/science.js')),optionsModule=require(path.join(dest,'lib/papers/science-options.js')),render=require(path.join(dest,'lib/papers/humanities-mixed.js')).renderHumanitiesMixed,route=require(path.join(dest,'app/api/admin/papers/science/route.js'));
 // Deliberately synthetic: no private production questions or reference worksheets.
 const units=Array.from({length:11},(_,i)=>({code:'5SC'+(i+1),title:'Synthetic scope '+(i+1)})),types=Object.keys(optionsModule.SCIENCE_TYPES);
@@ -34,4 +34,27 @@ test('science diagrams print inline with whole-group breaks, figure labels and i
 });
 test('science full API includes images when available and metadata never exposes assets or answers',async()=>{
  const saved=global.fetch;try{global.fetch=async(u)=>String(u).includes('/auth/v1/user')?Response.json({id:'12345678-1234-1234-1234-123456789abc'}):String(u).includes('/profiles?')?Response.json([{role:'admin',login_allowed:true}]):Response.json([{payload:pictureFixture}]);const meta=await(await route.GET(req())).json();assert.equal(meta.responses,236);assert.ok(!JSON.stringify(meta).includes('base64'));const response=await route.POST(req({...options,mode:'full'}));assert.equal(response.status,200);assert.ok(response.headers.get('cache-control').includes('no-store'));const d=await response.json();assert.equal(d.summary.marks,50);assert.ok(d.studentHtml.includes('<img'));assert.ok(!d.studentHtml.includes('PRIVATE_DIAGRAM'));assert.ok(d.answerHtml.includes('PRIVATE_DIAGRAM'));const custom=await route.POST(req({...pictureOptions,total:18,units:['5SC8'],types:['choice','picture']}));assert.equal(custom.status,200);assert.equal((await custom.json()).summary.marks,18);}finally{global.fetch=saved;}
+});
+
+test('textbook scope filters inventory and rejects unrelated units at generation',async()=>{
+ const saved=global.fetch;
+ const scopedFixture=structuredClone(fixture);
+ scopedFixture.units.push({code:'5SC12',title:'光與聲音'});
+ scopedFixture.groups.push(...fixture.groups.filter(g=>g.unit==='5SC1').map(g=>({
+  ...g,id:g.id.replace('5SC1','5SC12'),unit:'5SC12',
+  questions:g.questions.map(q=>({...q,id:q.id.replace('5SC1','5SC12'),unit:'5SC12'}))
+ })));
+ const url='https://example.invalid/api/admin/papers/science?scope=textbook';
+ const request=body=>new Request(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer fixture','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+ try{
+  global.fetch=async u=>String(u).includes('/auth/v1/user')?Response.json({id:'12345678-1234-1234-1234-123456789abc'}):String(u).includes('/profiles?')?Response.json([{role:'admin',login_allowed:true}]):Response.json([{payload:scopedFixture}]);
+  const metadata=await (await route.GET(request())).json();
+  assert.deepEqual(metadata.units.map(u=>u.code),['5SC12']);
+  const selection={...options,units:['5SC12'],types:['choice','fill'],total:4};
+  const result=await route.POST(request(selection));
+  assert.equal(result.status,200);
+  assert.ok((await result.json()).summary.ids.every(id=>id.startsWith('5SC12-')));
+  assert.equal((await route.POST(request({...selection,units:['5SC1']}))).status,400);
+  assert.equal((await route.POST(request({...selection,mode:'full'}))).status,400);
+ }finally{global.fetch=saved;}
 });
