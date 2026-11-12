@@ -42,6 +42,39 @@ const generalStudiesBooks: ReadonlyArray<{
   ] },
 ];
 
+const subjectPracticeTopics = {
+  humanities: [
+    ["5H3", "青春期的生理變化"],
+    ["5H3", "青春期的心理變化"],
+    ["5H12", "香港經濟的足跡"],
+    ["5H12", "香港主要的經濟活動"],
+    ["5H13", "政府的理財方法"],
+    ["5H6", "個人理財"],
+    ["5H14", "拒絕吸煙"],
+    ["5H14", "不要喝酒"],
+    ["5H14", "遠離毒品"],
+    ["5H7", "中國的地理"],
+    ["5H8", "中國的氣候"],
+    ["5H15", "漢、唐大事記"],
+    ["5H16", "宋、元、明放大鏡"],
+  ],
+  science: [
+    ["5SC17", "植物的繁殖"],
+    ["5SC2", "動物的繁殖"],
+    ["5SC12", "光的特性"],
+    ["5SC12", "聲音的傳播"],
+    ["5SC13", "閉合電路"],
+    ["5SC13", "電與生活"],
+    ["5SC16", "神經系統"],
+    ["5SC14", "泌尿系統"],
+    ["5SC15", "轉動的地球"],
+    ["5SC15", "月球的祕密"],
+    ["5SC15", "飛越太陽系"],
+    ["5SC18", "太空探測"],
+    ["5SC18", "太空科技與生活"],
+  ],
+} as const;
+
 const subjects = [
   { name: "中文", note: "閱讀、語文與寫作", icon: BookOpen, colour: "coral" },
   { name: "英文", note: "Reading, grammar & writing", icon: Languages, colour: "blue" },
@@ -1783,6 +1816,21 @@ export default function Home() {
   </main>;
   }
 
+  const renderSubjectPracticeCards = (subject: "humanities" | "science", units: MathsUnit[]) => {
+    const practicesByCode = new Map(units.map(unit => [unit.code, unit]));
+    return subjectPracticeTopics[subject].map(([code, title]) => {
+      const unit = practicesByCode.get(code);
+      return <button className={`unit-card ${subject}-unit-card ${unit ? "enabled" : ""}`}
+        key={title} type="button" disabled={!unit}
+        onClick={() => unit && startUnit({ ...unit, title_zh: title }, subject)}>
+        <span className="unit-code">{code}</span>
+        <h2>{title}</h2>
+        {unit && <p>{title === unit.title_zh ? unit.title_en : `對應題庫 · ${unit.title_zh}`}</p>}
+        <div><span>{subject === "humanities" ? "人文科" : "科學科"}</span><span>{unit ? "開始練習" : "練習暫未能開啟"}</span></div>
+      </button>;
+    });
+  };
+
   if (view === "humanities") return <main className="dashboard-page learning-flow-v2 subject-humanities"><TwinkoGuide view={view} answerCorrect={feedback?.is_correct ?? null} />
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap units-wrap humanities-units">
@@ -1790,8 +1838,8 @@ export default function Home() {
       <div className="units-heading"><div className="subject-icon amber"><Sparkles size={25} /></div><div><p className="eyebrow">P5 人文科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供解析並記錄錯題。</p></div></div>
       {humanitiesUnitsLoading && <div className="unit-status">正在載入人文科單元…</div>}
       {humanitiesUnitsMessage && <div className="unit-status error-message">{humanitiesUnitsMessage}</div>}
-      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && <div className="unit-grid">{humanitiesUnits.filter((unit) => /^5H[1-9]\d*$/.test(unit.code)).sort((a, b) => Number(a.code.slice(2)) - Number(b.code.slice(2))).map((unit) => <button className="unit-card humanities-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "humanities")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>人文科</span><span>開始練習</span></div></button>)}</div>}
-      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && humanitiesUnits.length === 0 && <div className="unit-status">目前尚未建立人文科單元。</div>}
+      {!humanitiesUnitsLoading && !humanitiesUnitsMessage && <div className="unit-grid">{renderSubjectPracticeCards("humanities", humanitiesUnits)}</div>}
+
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
   </main>;
@@ -1803,8 +1851,8 @@ export default function Home() {
       <div className="units-heading"><div className="subject-icon green"><Microscope size={25} /></div><div><p className="eyebrow">P5 科學科</p><h1>選擇學習單元</h1><p>每次隨機完成10題，系統會即時批改、提供科學解析並記錄錯題。</p></div></div>
       {scienceUnitsLoading && <div className="unit-status">正在載入科學科單元…</div>}
       {scienceUnitsMessage && <div className="unit-status error-message">{scienceUnitsMessage}</div>}
-      {!scienceUnitsLoading && !scienceUnitsMessage && <div className="unit-grid">{scienceUnits.slice().sort((a, b) => Number(a.code.slice(3)) - Number(b.code.slice(3))).map((unit) => <button className="unit-card science-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "science")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>科學科</span><span>開始練習</span></div></button>)}</div>}
-      {!scienceUnitsLoading && !scienceUnitsMessage && scienceUnits.length === 0 && <div className="unit-status">目前尚未建立科學科單元。</div>}
+      {!scienceUnitsLoading && !scienceUnitsMessage && <div className="unit-grid">{renderSubjectPracticeCards("science", scienceUnits)}</div>}
+
     </section>
     <button className="feedback-fab" onClick={openFeedback}><MessageSquareText size={19} />回報問題</button>
   </main>;
