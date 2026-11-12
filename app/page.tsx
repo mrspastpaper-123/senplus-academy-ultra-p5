@@ -43,7 +43,7 @@ const generalStudiesBooks: ReadonlyArray<{
 ];
 
 const hiddenChinesePracticeCodes = new Set([
-  "5CW2", "5CW3", "5CW4", "5CLI1", "5CLI2", "5CLI3", "5CSP1", "5CSP2", "5CSP3",
+  "5CW1", "5CW2", "5CW3", "5CW4", "5CLI1", "5CLI2", "5CLI3", "5CSP1", "5CSP2", "5CSP3",
 ]);
 
 const subjectPracticeTopics = {
