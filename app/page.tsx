@@ -42,6 +42,10 @@ const generalStudiesBooks: ReadonlyArray<{
   ] },
 ];
 
+const hiddenChinesePracticeCodes = new Set([
+  "5CW2", "5CW3", "5CW4", "5CLI1", "5CLI2", "5CLI3", "5CSP1", "5CSP2", "5CSP3",
+]);
+
 const subjectPracticeTopics = {
   humanities: [
     ["5H3", "青春期的生理變化"],
@@ -1125,7 +1129,9 @@ export default function Home() {
       setChineseUnitsMessage("未能載入中文單位，請稍後再試。");
     } else {
       const domainMap = new Map(domains.map((domain) => [domain.id, { title_zh: domain.name_zh, code: domain.code }]));
-      setChineseUnits((data || []).map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
+      setChineseUnits((data || [])
+        .filter((unit) => !hiddenChinesePracticeCodes.has(unit.code))
+        .map((unit) => ({ ...unit, curriculum_domains: domainMap.get(unit.domain_id) || null })) as MathsUnit[]);
     }
     setChineseUnitsLoading(false);
   }
@@ -1770,7 +1776,7 @@ export default function Home() {
     <section className="dashboard-wrap units-wrap chinese-units">
       <button className="back-button" onClick={showAllSubjects}><ArrowLeft size={18} />查看全部科目</button>
       <div className="units-heading"><div className="subject-icon coral"><BookOpen size={25} /></div><div><p className="eyebrow">P5 中文</p><h1>選擇學習單位</h1><p>選擇單位完成10題練習，系統會即時批改並記錄錯題。</p></div></div>
-      {chineseUnitsLoading && <div className="unit-status">正在載入20個中文單位…</div>}
+      {chineseUnitsLoading && <div className="unit-status">正在載入中文單位…</div>}
       {chineseUnitsMessage && <div className="unit-status error-message">{chineseUnitsMessage}</div>}
       {!chineseUnitsLoading && !chineseUnitsMessage && <div className="unit-grid">{chineseUnits.map((unit) => <button className="unit-card chinese-unit-card enabled" key={unit.id} type="button" onClick={() => startUnit(unit, "chinese")}><span className="unit-code">{unit.code}</span><h2>{unit.title_zh}</h2><p>{unit.title_en}</p><div><span>{unit.curriculum_domains?.title_zh || "中文"}</span><span>開始練習</span></div></button>)}</div>}
       {!chineseUnitsLoading && !chineseUnitsMessage && chineseUnits.length === 0 && <div className="unit-status">目前尚未建立中文單位。</div>}
