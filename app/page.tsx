@@ -1720,7 +1720,7 @@ export default function Home() {
     <header className="topbar"><div className="brand"><div className="brand-mark small">S+</div><div><strong>SENPlus+</strong><span>Academy Ultra · P5</span></div></div><div className="account"><span>{profile?.display_name || session.user.email}</span><button onClick={signOut}><LogOut size={17} />登出</button></div></header>
     <section className="dashboard-wrap practice-wrap">
       <button className="back-button" onClick={() => setView(practiceReturnView)}><ArrowLeft size={18} />返回{practiceReturnView === "generalStudies" ? "常識科" : activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}單位</button>
-      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {practiceReturnView === "generalStudies" ? "常識科" : activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}{activeSubject !== "humanities" && activeSubject !== "science" && <> · {activeUnit?.curriculum_domains?.title_zh}</>}</p><h1>{activeUnit?.title_zh}</h1></div>
+      <div className="practice-heading"><span className="unit-code">{activeUnit?.code}</span><p>P5 {practiceReturnView === "generalStudies" ? "常識科" : activeSubject === "chinese" ? "中文" : activeSubject === "english" ? "英文" : activeSubject === "humanities" ? "人文科" : activeSubject === "science" ? "科學科" : "數學"}{activeSubject !== "humanities" && activeSubject !== "science" && <> · {activeUnit?.curriculum_domains?.title_zh}</>}</p><h1>{activeUnit ? renderMarkedText(activeUnit.title_zh) : null}</h1></div>
       {practiceLoading && !currentQuestion && <div className="unit-status">正在建立10題練習…</div>}
       {practiceMessage && <div className="unit-status error-message">{practiceMessage}</div>}
       {isReadingUnit && questions.length > 0 && <section className="reading-paper">
@@ -1827,13 +1827,15 @@ export default function Home() {
 
   const renderSubjectPracticeCards = (subject: "humanities" | "science", units: MathsUnit[]) => {
     const practicesByCode = new Map(units.map(unit => [unit.code, unit]));
-    return subjectPracticeTopics[subject].map(([code, title]) => {
+    const rebuilt = subject === "humanities" ? units.filter(unit => /^5HN(?:0[1-9]|1[0-4])$/.test(unit.code)) : [];
+    const topics = rebuilt.length === 14 ? rebuilt.map(unit => [unit.code, unit.title_zh] as const) : subjectPracticeTopics[subject];
+    return topics.map(([code, title]) => {
       const unit = practicesByCode.get(code);
       return <button className={`unit-card ${subject}-unit-card ${unit ? "enabled" : ""}`}
         key={title} type="button" disabled={!unit}
         onClick={() => unit && startUnit({ ...unit, title_zh: title }, subject)}>
         <span className="unit-code">{code}</span>
-        <h2>{title}</h2>
+        <h2>{renderMarkedText(title)}</h2>
         {unit && <p>{title === unit.title_zh ? unit.title_en : `對應題庫 · ${unit.title_zh}`}</p>}
         <div><span>{subject === "humanities" ? "人文科" : "科學科"}</span><span>{unit ? "開始練習" : "練習暫未能開啟"}</span></div>
       </button>;
